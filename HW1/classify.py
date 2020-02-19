@@ -168,31 +168,3 @@ def main():
 
 if __name__ == '__main__':
 	main()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# def __init(self, n_inp, n_hidden, n_outp):
-# 	superl(Net,self).__init__()
-# 	self.hidden = torch.nn.Linear(n_inp, n_hidden)
-# 	self.outp = torch.nn.Linear(n_hidden, n_outp)
-
-# def forard(self, x):
-# 	x = F.relu(self.hidden(x))
-# 	x = self.outp(x)
-# 	return x
-
-
-# model = Net(1, 10, 1) # will be useful for scanner model parameters
