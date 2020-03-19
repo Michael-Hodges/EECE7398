@@ -4,3 +4,4 @@ HW1: Classification on CIFAR-10 using basic fully connected neural networks
 
 HW2: Classification on CIFAR-10 using Convolutional Network
 
+HW3: Nueral Machine Translation using LSTM
