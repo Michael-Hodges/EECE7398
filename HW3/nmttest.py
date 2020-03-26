@@ -1,40 +1,75 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-import sys
-import io
-import argparse
-
-import numpy as np
-import spacy
-
 import torch
-from torch.autograd import Variable
 import torch.nn as nn
-import torch.nn.functional as F
-import torch.utils.data as Data
+import torch.optim as optim
 
-from torchtext.datasets import TranslationDataset
+from torchtext.datasets import TranslationDataset, Multi30k
 from torchtext.data import Field, BucketIterator
 
-import time
-import math
+import spacy
+import numpy as np
+
 import random
+import math
+import time
 
+SEED = 1234
+
+random.seed(SEED)
+np.random.seed(SEED)
+torch.manual_seed(SEED)
+torch.cuda.manual_seed(SEED)
+torch.backends.cudnn.deterministic = True
+
+spacy_de = spacy.load('de')
 spacy_en = spacy.load('en')
-spacy_vi = spacy.load('vi_spacy_model')
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-SRC = Field(tokenize = "spacy",
-			tokenizer_language="en",
-			init_token = '<sos>',
-			eos_token = '<eos>',
+def tokenize_de(text):
+	"""
+	Tokenizes German text from a string into a list of strings (tokens) and reverses it
+	"""
+	return [tok.text for tok in spacy_de.tokenizer(text)][::-1]
+
+def tokenize_en(text):
+	"""
+	Tokenizes English text from a string into a list of strings (tokens)
+	"""
+	return [tok.text for tok in spacy_en.tokenizer(text)]
+
+
+SRC = Field(tokenize = tokenize_de, 
+			init_token = '<sos>', 
+			eos_token = '<eos>', 
 			lower = True)
 
-TRG = Field(tokenize = "spacy",
-			tokenizer_language="vi_spacy_model",
-			init_token = '<sos>',
-			eos_token = '<eos>',
+TRG = Field(tokenize = tokenize_en, 
+			init_token = '<sos>', 
+			eos_token = '<eos>', 
 			lower = True)
+
+train_data, valid_data, test_data = Multi30k.splits(exts = ('.de', '.en'), 
+													fields = (SRC, TRG))
+
+print(f"Number of training examples: {len(train_data.examples)}")
+print(f"Number of validation examples: {len(valid_data.examples)}")
+print(f"Number of testing examples: {len(test_data.examples)}")
+
+SRC.build_vocab(train_data, min_freq = 2)
+TRG.build_vocab(train_data, min_freq = 2)
+
+print(f"Unique tokens in source (de) vocabulary: {len(SRC.vocab)}")
+print(f"Unique tokens in target (en) vocabulary: {len(TRG.vocab)}")
+
+
+device = torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
+
+BATCH_SIZE = 128
+
+train_iterator, valid_iterator, test_iterator = BucketIterator.splits(
+	(train_data, valid_data, test_data), 
+	batch_size = BATCH_SIZE, 
+	device = device)
+
+
 
 class Encoder(nn.Module):
 	def __init__(self, input_dim, emb_dim, hid_dim, n_layers, dropout):
@@ -66,6 +101,8 @@ class Encoder(nn.Module):
 		#outputs are always from the top hidden layer
 		
 		return hidden, cell
+
+
 class Decoder(nn.Module):
 	def __init__(self, output_dim, emb_dim, hid_dim, n_layers, dropout):
 		super().__init__()
@@ -116,6 +153,7 @@ class Decoder(nn.Module):
 		#prediction = [batch size, output dim]
 		
 		return prediction, hidden, cell
+
 
 class Seq2Seq(nn.Module):
 	def __init__(self, encoder, decoder, device):
@@ -171,24 +209,36 @@ class Seq2Seq(nn.Module):
 		
 		return outputs
 
-def loadData():
-	print()
-	#TODO
-	return TranslationDataset('./E_V/train', 
-							('.en','.vi'), (SRC,TRG))
+INPUT_DIM = len(SRC.vocab)
+OUTPUT_DIM = len(TRG.vocab)
+ENC_EMB_DIM = 256
+DEC_EMB_DIM = 256
+HID_DIM = 512
+N_LAYERS = 2
+ENC_DROPOUT = 0.5
+DEC_DROPOUT = 0.5
 
-def tokenize_en(text):
-	print("TODO")
-	return []
+enc = Encoder(INPUT_DIM, ENC_EMB_DIM, HID_DIM, N_LAYERS, ENC_DROPOUT)
+dec = Decoder(OUTPUT_DIM, DEC_EMB_DIM, HID_DIM, N_LAYERS, DEC_DROPOUT)
 
-def tokenize_vi(text):
-	print("TODO")
-	return []
+model = Seq2Seq(enc, dec, device).to(device)
 
 def init_weights(m):
 	for name, param in m.named_parameters():
 		nn.init.uniform_(param.data, -0.08, 0.08)
+		
+model.apply(init_weights)
 
+def count_parameters(model):
+	return sum(p.numel() for p in model.parameters() if p.requires_grad)
+
+print(f'The model has {count_parameters(model):,} trainable parameters')
+
+optimizer = optim.Adam(model.parameters())
+
+TRG_PAD_IDX = TRG.vocab.stoi[TRG.pad_token]
+
+criterion = nn.CrossEntropyLoss(ignore_index = TRG_PAD_IDX)
 
 def train(model, iterator, optimizer, criterion, clip):
 	
@@ -229,20 +279,6 @@ def train(model, iterator, optimizer, criterion, clip):
 	return epoch_loss / len(iterator)
 
 
-# def train():
-# 	print("train")
-# 	#TODO
-# 	model.train()
-# 	#load encoder vocabulary
-# 	#load decoder vocabulary
-# 	#something with buckets
-# 	#number of samples in each bucket
-# 	#bucket scale
-# 	#train
-	
-# 	print("Training terminated. Saving model...")
-# 	# torch.save(net.state_dict(), "./model/lstm.pt")
-
 def evaluate(model, iterator, criterion):
 	
 	model.eval()
@@ -275,142 +311,40 @@ def evaluate(model, iterator, criterion):
 		
 	return epoch_loss / len(iterator)
 
-# def test():
-# 	#TODO
-# 	# load model
-# 	print("Loading Model...")
-# 	# net = Net()
-# 	# net.load_state_dict(torch.load("./model/lstm.pt"))
-# 	# net.eval()
-# 	# perform translation
-# 	# Display average BLEU score with smoothing method 1. No less than 0.07 (7%)
-# 	print("test")
 def epoch_time(start_time, end_time):
-    elapsed_time = end_time - start_time
-    elapsed_mins = int(elapsed_time / 60)
-    elapsed_secs = int(elapsed_time - (elapsed_mins * 60))
-    return elapsed_mins, elapsed_secs
-
-def translate():
-	#TODO
-	print("Loading Model...")
-	net = Net()
-	net.load_state_dict(torch.load("./model/lstm.pt"))
-	net.eval()
-	print("In Translate Mode, Use CTL + C to exit")
-	while(1):
-		inString = input("> ")
-		print(inString)
-	# load model
-	# accept user input
-	# print output
-	print("translate")
+	elapsed_time = end_time - start_time
+	elapsed_mins = int(elapsed_time / 60)
+	elapsed_secs = int(elapsed_time - (elapsed_mins * 60))
+	return elapsed_mins, elapsed_secs
 
 
+N_EPOCHS = 10
+CLIP = 1
 
-if __name__ == '__main__':
-	parser = argparse.ArgumentParser()
-	parser.add_argument('input')
-	args = parser.parse_args()
+best_valid_loss = float('inf')
+
+for epoch in range(N_EPOCHS):
 	
-
-	myData = loadData()
-	train_data, test_data = myData.splits(exts = ('.en', '.vi'),
-								fields = (SRC,TRG), 
-								path="./E_V/", 
-								train='train',
-								validation=None,
-								test='tst2012')
-	# print(f"Number of training examples: {len(train_data)}")
-	# print(f"Number of testing examples: {len(test_data)}")
-
-
-	SRC.build_vocab(train_data, min_freq = 2)
-	TRG.build_vocab(train_data, min_freq = 2)
-	print(f"ENC_VOCAB: {len(SRC.vocab)}")
-	print(f"DEC_VOCAB: {len(TRG.vocab)}")
-
-	BATCH_SIZE = 32
+	start_time = time.time()
+	
+	train_loss = train(model, train_iterator, optimizer, criterion, CLIP)
+	valid_loss = evaluate(model, valid_iterator, criterion)
+	
+	end_time = time.time()
+	
+	epoch_mins, epoch_secs = epoch_time(start_time, end_time)
+	
+	if valid_loss < best_valid_loss:
+		best_valid_loss = valid_loss
+		torch.save(model.state_dict(), 'tut1-model.pt')
+	
+	print(f'Epoch: {epoch+1:02} | Time: {epoch_mins}m {epoch_secs}s')
+	print(f'\tTrain Loss: {train_loss:.3f} | Train PPL: {math.exp(train_loss):7.3f}')
+	print(f'\t Val. Loss: {valid_loss:.3f} |  Val. PPL: {math.exp(valid_loss):7.3f}')
 
 
+model.load_state_dict(torch.load('tut1-model.pt'))
 
-	train_iterator, test_iterator = BucketIterator.splits(
-		(train_data, test_data), 
-		batch_size = BATCH_SIZE, 
-		device = device)
+test_loss = evaluate(model, test_iterator, criterion)
 
-	print(train_iterator, test_iterator)
-	print("Bucket: ")
-	print("Number of samples in each bucket: ")
-	print("Bucket scale: ")
-
-
-	print("Loading Model...")
-	INPUT_DIM = len(SRC.vocab)
-	OUTPUT_DIM = len(TRG.vocab)
-	ENC_EMB_DIM = 256
-	DEC_EMB_DIM = 256
-	HID_DIM = 512
-	N_LAYERS = 2
-	ENC_DROPOUT = 0.5
-	DEC_DROPOUT = 0.5
-
-	enc = Encoder(INPUT_DIM, ENC_EMB_DIM, HID_DIM, N_LAYERS, ENC_DROPOUT)
-	dec = Decoder(OUTPUT_DIM, DEC_EMB_DIM, HID_DIM, N_LAYERS, DEC_DROPOUT)
-
-
-	model = Seq2Seq(enc, dec, device).to(device)	
-	model.apply(init_weights)
-
-	optimizer = torch.optim.Adam(model.parameters())
-	TRG_PAD_IDX = TRG.vocab.stoi[TRG.pad_token]
-
-	criterion = nn.CrossEntropyLoss(ignore_index = TRG_PAD_IDX)
-
-	N_EPOCHS = 10
-	CLIP = 1
-
-	best_valid_loss = float('inf')
-
-	for epoch in range(N_EPOCHS):
-		
-		start_time = time.time()
-		
-		train_loss = train(model, train_iterator, optimizer, criterion, CLIP)
-		
-		end_time = time.time()
-		
-		epoch_mins, epoch_secs = epoch_time(start_time, end_time)
-		
-		if valid_loss < best_valid_loss:
-			best_valid_loss = valid_loss
-			torch.save(model.state_dict(), 'tut1-model.pt')
-		
-		print(f'Epoch: {epoch+1:02} | Time: {epoch_mins}m {epoch_secs}s')
-		print(f'\tTrain Loss: {train_loss:.3f} | Train PPL: {math.exp(train_loss):7.3f}')
-		print(f'\t Val. Loss: {valid_loss:.3f} |  Val. PPL: {math.exp(valid_loss):7.3f}')
-	if args.input == "train":
-		train()
-	if args.input == "test":
-		# test()
-		print("test")
-	if args.input == "translate":
-		translate()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+print(f'| Test Loss: {test_loss:.3f} | Test PPL: {math.exp(test_loss):7.3f} |')
