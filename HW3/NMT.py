@@ -350,7 +350,7 @@ if __name__ == '__main__':
 	ENC_EMB_DIM = 256
 	DEC_EMB_DIM = 256
 	HID_DIM = 512
-	N_LAYERS = 2
+	N_LAYERS = 1
 	ENC_DROPOUT = 0.5
 	DEC_DROPOUT = 0.5
 	BATCH_SIZE = 32
