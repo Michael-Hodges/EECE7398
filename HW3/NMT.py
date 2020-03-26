@@ -376,7 +376,7 @@ if __name__ == '__main__':
 
 
 	if args.input == "train":
-		train()
+		train(model, train_iterator)
 	if args.input == "test":
 		# test()
 		print("test")
