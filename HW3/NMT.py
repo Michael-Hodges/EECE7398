@@ -144,6 +144,8 @@ class Seq2Seq(nn.Module):
 		
 		#last hidden state of the encoder is used as the initial hidden state of the decoder
 		hidden, cell = self.encoder(src)
+		hidden.to(device)
+		cell.to(device)
 		
 		#first input to the decoder is the <sos> tokens
 		input = trg[0,:]
@@ -270,7 +272,7 @@ def train(model, train_iterator):
 		start_time = time.time()
 		
 		train_loss = trainStep(model, train_iterator, optimizer, criterion, CLIP)
-		valid_loss = evaluate(model, test_iterator, criterion)
+		# valid_loss = evaluate(model, test_iterator, criterion)
 		end_time = time.time()
 		
 		epoch_mins, epoch_secs = epoch_time(start_time, end_time)
@@ -282,7 +284,7 @@ def train(model, train_iterator):
 		
 		print(f'Epoch: {epoch+1:02} | Time: {epoch_mins}m {epoch_secs}s')
 		print(f'\tTrain Loss: {train_loss:.3f} | Train PPL: {math.exp(train_loss):7.3f}')
-		print(f'\t Val. Loss: {valid_loss:.3f} |  Val. PPL: {math.exp(valid_loss):7.3f}')
+		# print(f'\t Val. Loss: {valid_loss:.3f} |  Val. PPL: {math.exp(valid_loss):7.3f}')
 
 def evaluate(model, iterator, criterion):
 	
@@ -362,8 +364,9 @@ if __name__ == '__main__':
 	print(f"Number of training examples: {len(train_data)}")
 	print(f"Number of testing examples: {len(test_data)}")
 	print(vars(train_data.examples[0]))
-	SRC.build_vocab(vocabData, min_freq = 1)
-	TRG.build_vocab(vocabData, min_freq = 1)
+	print(vocabData)
+	SRC.build_vocab(vocabData, min_freq = 0)
+	TRG.build_vocab(vocabData, min_freq = 0)
 	print(f"ENC_VOCAB: {len(SRC.vocab)}")
 	print(f"DEC_VOCAB: {len(TRG.vocab)}")
 	print(SRC.vocab)
@@ -381,7 +384,8 @@ if __name__ == '__main__':
 		(train_data, test_data), 
 		batch_size = BATCH_SIZE, 
 		device = device)
-
+	batch = next(iter(train_iterator))
+	# print(batch)
 	# print(train_iterator, test_iterator)
 	# print("Bucket: ")
 	# print("Number of samples in each bucket: ")
@@ -399,7 +403,7 @@ if __name__ == '__main__':
 
 	if args.input == "train":
 		print("train")
-		train(model, train_iterator)
+		# train(model, train_iterator)
 
 	if args.input == "test":
 		# test()
