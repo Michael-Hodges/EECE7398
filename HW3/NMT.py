@@ -15,6 +15,7 @@ import torch.utils.data as Data
 
 from torchtext.datasets import TranslationDataset
 from torchtext.data import Field, BucketIterator
+from torchtext.vocab import Vocab, Vectors
 
 import time
 import math
@@ -24,14 +25,14 @@ spacy_en = spacy.load('en')
 spacy_vi = spacy.load('vi_spacy_model')
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-SRC = Field(tokenize = "spacy",
-			tokenizer_language="en",
+SRC = Field(tokenize = None,
+			# tokenizer_language="en",
 			init_token = '<sos>',
 			eos_token = '<eos>',
 			lower = True)
 
-TRG = Field(tokenize = "spacy",
-			tokenizer_language="vi_spacy_model",
+TRG = Field(tokenize = None,
+			# tokenizer_language="vi_spacy_model",
 			init_token = '<sos>',
 			eos_token = '<eos>',
 			lower = True)
@@ -172,10 +173,37 @@ class Seq2Seq(nn.Module):
 		return outputs
 
 def loadData():
-	print()
-	#TODO
-	return TranslationDataset('./E_V/train', 
+	# endict = open('./E_V/dict.en-vi')
+	# trainViet = open('./E_V/train.vi')
+	# trainEN = open('./E_V/train.vi')
+	# print(endict.readline())
+	# return endict
+
+	myData = TranslationDataset('./E_V/train', 
 							('.en','.vi'), (SRC,TRG))
+
+	train_data, test_data = myData.splits(exts = ('.en', '.vi'),
+							fields = (SRC,TRG), 
+							path="./E_V/", 
+							train='train',
+							validation=None,
+							test='tst2012')
+	vocabData = TranslationDataset('./E_V/vocab',('.en','.vi'), (SRC,TRG))
+
+
+	# fileen = open('./E_V/vocab.en','r')
+	# filevi = open('./E_V/vocab.vi','r')
+	enVec = 0 #Vectors('./E_V/vocab.en')
+	viVec = 0 #Vectors('./E_V/vocab.vi')
+	# fileen.close()
+	# filevi.close()
+	# en_vocab, vi_vocab = myData.splits(exts = ('.en','.vi'),
+	# 						fields = (SRC,TRG),
+	# 						path = "./E_V/",
+	# 						train = 'vocab',
+	# 						validation = None,
+	# 						test = None)
+	return train_data, test_data, enVec, viVec
 
 def tokenize_en(text):
 	print("TODO")
@@ -329,22 +357,18 @@ if __name__ == '__main__':
 	parser.add_argument('input')
 	args = parser.parse_args()
 	
-
-	myData = loadData()
-	train_data, test_data = myData.splits(exts = ('.en', '.vi'),
-								fields = (SRC,TRG), 
-								path="./E_V/", 
-								train='train',
-								validation=None,
-								test='tst2012')
-	# print(f"Number of training examples: {len(train_data)}")
-	# print(f"Number of testing examples: {len(test_data)}")
+	# print(viet_train.read())
+	
+	train_data, test_data, en_vocab, vi_vocab = loadData()
 
 
-	SRC.build_vocab(train_data, min_freq = 2)
-	TRG.build_vocab(train_data, min_freq = 2)
+	print(f"Number of training examples: {len(train_data)}")
+	print(f"Number of testing examples: {len(test_data)}")
+	SRC.build_vocab(train_data, min_freq = 1)
+	TRG.build_vocab(train_data, min_freq = 1)
 	print(f"ENC_VOCAB: {len(SRC.vocab)}")
 	print(f"DEC_VOCAB: {len(TRG.vocab)}")
+	print(SRC.vocab)
 	INPUT_DIM = len(SRC.vocab)
 	OUTPUT_DIM = len(TRG.vocab)
 	ENC_EMB_DIM = 256
@@ -360,10 +384,10 @@ if __name__ == '__main__':
 		batch_size = BATCH_SIZE, 
 		device = device)
 
-	print(train_iterator, test_iterator)
-	print("Bucket: ")
-	print("Number of samples in each bucket: ")
-	print("Bucket scale: ")
+	# print(train_iterator, test_iterator)
+	# print("Bucket: ")
+	# print("Number of samples in each bucket: ")
+	# print("Bucket scale: ")
 
 
 	print("Loading Model...")
@@ -376,7 +400,9 @@ if __name__ == '__main__':
 
 
 	if args.input == "train":
+		print("train")
 		train(model, train_iterator)
+
 	if args.input == "test":
 		# test()
 		print("test")
