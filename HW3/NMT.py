@@ -53,7 +53,7 @@ class Encoder(nn.Module):
 	def forward(self, src):
 		
 		#src = [src len, batch size]
-		
+		print("source size: {}".format(src.shape)
 		embedded = self.dropout(self.embedding(src))
 		
 		#embedded = [src len, batch size, emb dim]
@@ -203,7 +203,7 @@ def loadData():
 	# 						train = 'vocab',
 	# 						validation = None,
 	# 						test = None)
-	return train_data, test_data, enVec, viVec
+	return train_data, test_data, vocabData
 
 def tokenize_en(text):
 	print("TODO")
@@ -359,13 +359,14 @@ if __name__ == '__main__':
 	
 	# print(viet_train.read())
 	
-	train_data, test_data, en_vocab, vi_vocab = loadData()
-
+	train_data, test_data, vocabData = loadData()
+	print(vocabData)
 
 	print(f"Number of training examples: {len(train_data)}")
 	print(f"Number of testing examples: {len(test_data)}")
-	SRC.build_vocab(train_data, min_freq = 1)
-	TRG.build_vocab(train_data, min_freq = 1)
+	print(vars(train_data.examples[0]))
+	SRC.build_vocab(vocabData, min_freq = 1)
+	TRG.build_vocab(vocabData, min_freq = 1)
 	print(f"ENC_VOCAB: {len(SRC.vocab)}")
 	print(f"DEC_VOCAB: {len(TRG.vocab)}")
 	print(SRC.vocab)
