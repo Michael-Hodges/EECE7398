@@ -53,7 +53,7 @@ class Encoder(nn.Module):
 	def forward(self, src):
 		
 		#src = [src len, batch size]
-		print("source size: {}".format(src.shape)
+		print("source size: {}".format(src.shape))
 		embedded = self.dropout(self.embedding(src))
 		
 		#embedded = [src len, batch size, emb dim]
