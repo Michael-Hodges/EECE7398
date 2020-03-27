@@ -5,7 +5,6 @@ import io
 import argparse
 
 import numpy as np
-import spacy
 
 import torch
 from torch.autograd import Variable
@@ -21,8 +20,6 @@ import time
 import math
 import random
 
-spacy_en = spacy.load('en')
-spacy_vi = spacy.load('vi_spacy_model')
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 SRC = Field(tokenize = None,
@@ -53,7 +50,7 @@ class Encoder(nn.Module):
 	def forward(self, src):
 		
 		#src = [src len, batch size]
-		print("source size: {}".format(src.shape))
+		# print("source size: {}".format(src.shape))
 		embedded = self.dropout(self.embedding(src))
 		
 		#embedded = [src len, batch size, emb dim]
@@ -273,7 +270,7 @@ def train(model, train_iterator):
 		start_time = time.time()
 		
 		train_loss = trainStep(model, train_iterator, optimizer, criterion, CLIP)
-		
+		valid_loss = evaluate(model, test_iterator, criterion)
 		end_time = time.time()
 		
 		epoch_mins, epoch_secs = epoch_time(start_time, end_time)
