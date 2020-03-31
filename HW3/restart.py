@@ -369,6 +369,12 @@ def dataLoader():
 def train_step(data_iter):
 	print()
 
+def epoch_time(start_time, end_time):
+	elapsed_time = end_time - start_time
+	elapsed_mins = int(elapsed_time / 60)
+	elapsed_secs = int(elapsed_time - (elapsed_mins * 60))
+	return elapsed_mins, elapsed_secs
+
 def train():
 	# data_bucket, bucket_scale, len_enc_voc, len_dec_voc = dataLoader()
 	enc_data, dec_data, len_enc_voc, len_dec_voc = dataLoader()
@@ -404,37 +410,48 @@ def train():
 	optimizer = optim.Adam(model.parameters())
 	criterion = nn.CrossEntropyLoss()
 	model.train()
-	epoch_loss = 0
+	
 
-	for i, (enc,dec) in enumerate(data_iter):
-		src = enc
-		trg = dec
+	for epoch in range(N_EPOCHS):
+		start_time = time.time()
+		epoch_loss = 0
+		for i, (enc,dec) in enumerate(data_iter):
+			src = enc
+			trg = dec
 
-		optimizer.zero_grad()
+			optimizer.zero_grad()
 
-		output = model(src,trg)
-		print("shape from model: {}".format(output.shape))
-		# trg = [batch size, trg len]
-		# output = [batch, trg len, output dim]
+			output = model(src,trg)
+			# print("shape from model: {}".format(output.shape))
+			# trg = [batch size, trg len]
+			# output = [batch, trg len, output dim]
 
-		output_dim  = output.shape[-1]
-		print("output dimension: {}".format(output_dim))
-		output = output[1:].view(-1, output_dim)
-		trg = trg[1:].view(-1)
-		print("output shape: {}".format(output.shape))
-		print("target shape:{}".format(trg.shape))
+			output_dim  = output.shape[-1]
+			# print("output dimension: {}".format(output_dim))
+			output = output[1:].view(-1, output_dim)
+			trg = trg[1:].view(-1)
+			# print("output shape: {}".format(output.shape))
+			# print("target shape:{}".format(trg.shape))
 
-		loss = criterion(output,trg)
+			loss = criterion(output,trg)
 
-		loss.backward()
+			loss.backward()
 
-		torch.nn.utils.clip_grad_norm(model.parameters(), CLIP)
+			torch.nn.utils.clip_grad_norm(model.parameters(), CLIP)
 
-		optimizer.step()
+			optimizer.step()
 
-		epoch_loss += loss.item()
+			epoch_loss += loss.item()
 
-	print(epoch_loss/len(data_iter))
+		epoch_loss = epoch_loss/len(data_iter)
+
+		end_time = time.time()
+		epoch_min, epoch_seconds = epoch_time(start_time, end_time)
+		print("Epoch: {} | Time: {}m {}s".format(epoch, start_time, end_time))
+		print("Train Loss: {}".format(epoch_loss))
+
+	print("Training Terminated. Saving model...")
+	torch.save(mpdel.state_dict(), './model/nmt.pt')
 
 
 
