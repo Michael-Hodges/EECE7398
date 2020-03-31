@@ -388,8 +388,8 @@ def train():
 	model = Seq2Seq(enc, dec, DEVICE).to(DEVICE)
 	print(f'The model has {count_parameters(model):,} trainable parameters')
 
-	enc_tens = torch.tensor(enc_data, dtype = torch.int64)
-	dec_tens = torch.tensor(dec_data, dtype = torch.int64)
+	enc_tens = torch.tensor(enc_data, dtype = torch.int64).to(DEVICE)
+	dec_tens = torch.tensor(dec_data, dtype = torch.int64).to(DEVICE)
 	train_dataset = MyData(enc_tens, dec_tens)
 
 	train_loader = torch.utils.data.DataLoader(train_dataset, batch_size = BATCH_SIZE, shuffle=False, drop_last = True)
@@ -413,7 +413,7 @@ def train():
 		optimizer.zero_grad()
 
 		output = model(src,trg)
-		print(output.shape)
+		print("shape from model: {}".format(output.shape))
 		# trg = [batch size, trg len]
 		# output = [batch, trg len, output dim]
 
