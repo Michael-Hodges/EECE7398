@@ -294,7 +294,7 @@ def load_data_nb(enc_list, dec_list, enc_len, dec_len):
 	dec_len_ret = []
 	ii = 0
 	for enc, dec, enc_lens, dec_lens in zip(enc_list, dec_list, enc_len, dec_len):
-		if len(enc)<ENG_MAX_LEN and len(dec)<VI_MAX_LEN:
+		if len(enc)<=ENG_MAX_LEN and len(dec)<=VI_MAX_LEN:
 			enc.extend(np.zeros(ENG_MAX_LEN-len(enc),dtype=int))
 			dec.extend(np.zeros(VI_MAX_LEN-len(dec),dtype=int))
 			enc_pad.append(enc)
