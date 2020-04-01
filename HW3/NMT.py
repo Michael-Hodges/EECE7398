@@ -437,7 +437,7 @@ def train():
 
 			loss.backward()
 
-			torch.nn.utils.clip_grad_norm(model.parameters(), CLIP)_
+			torch.nn.utils.clip_grad_norm_(model.parameters(), CLIP)
 
 			optimizer.step()
 
