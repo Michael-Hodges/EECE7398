@@ -474,7 +474,7 @@ def test():
 	dec = Decoder(OUTPUT_DIM, DEC_EMB_DIM, HID_DIM, N_LAYERS, DEC_DROPOUT)
 	model = Seq2Seq(enc, dec, DEVICE).to(DEVICE)
 
-	model.load_state_dict(torch.load('./model/NMT.pt'))
+	model.load_state_dict(torch.load('./model/nmt.pt'))
 
 	enc_tens = torch.tensor(enc_data, dtype = torch.int64).to(DEVICE)
 	dec_tens = torch.tensor(dec_data, dtype = torch.int64).to(DEVICE)
@@ -520,7 +520,7 @@ def translate():
 	dec = Decoder(OUTPUT_DIM, DEC_EMB_DIM, HID_DIM, N_LAYERS, DEC_DROPOUT)
 	model = Seq2Seq(enc, dec, DEVICE).to(DEVICE)
 
-	model.load_state_dict(torch.load('./model/NMT.pt'))
+	model.load_state_dict(torch.load('./model/nmt.pt'))
 	while(1):
 		to_translate = input(">")
 
