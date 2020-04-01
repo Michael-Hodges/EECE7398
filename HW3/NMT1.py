@@ -415,8 +415,8 @@ def train():
 
 
 	model.apply(init_weights)
-	optimizer = optim.Adam(model.parameters())
-	criterion = nn.CrossEntropyLoss()
+	optimizer = optim.Adam(model.parameters(), 0.0001)
+	criterion = nn.CrossEntropyLoss(ignore_index=0)
 	model.train()
 	
 
