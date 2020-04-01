@@ -340,7 +340,7 @@ class MyData(torch.utils.data.Dataset):
 	def __len__(self):
 		return len(self.source)
 
-def dataLoader():
+def dataLoader(trn_tst):
 	print("Processing Data")
 	en_words, en_indx = load_vocab('./E_V/vocab.en')
 	vi_words, vi_indx = load_vocab('./E_V/vocab.vi')
@@ -351,8 +351,12 @@ def dataLoader():
 	# print("Bucket: {}".format(BUCKETS))
 
 	en_train, vi_train, en_test, vi_test = get_lines()
-	en_identified, max_en = token2id(en_train, en_indx)
-	vi_identified, max_vi = token2id(vi_train, vi_indx)
+	if trn_tst == "train":
+		en_identified, max_en = token2id(en_train, en_indx)
+		vi_identified, max_vi = token2id(vi_train, vi_indx)
+	if trn_tst == "test":
+		en_identified, max_en = token2id(en_test, en_indx)
+		vi_identified, max_vi = token2id(vi_test, vi_indx)
 	print(len(en_identified))
 	# tokenized = id2token(identified, words)
 	assert len(en_identified) == len(vi_identified), "Translation data not the same length"
@@ -377,7 +381,7 @@ def epoch_time(start_time, end_time):
 
 def train():
 	# data_bucket, bucket_scale, len_enc_voc, len_dec_voc = dataLoader()
-	enc_data, dec_data, len_enc_voc, len_dec_voc = dataLoader()
+	enc_data, dec_data, len_enc_voc, len_dec_voc = dataLoader("train")
 	INPUT_DIM = len_enc_voc
 	OUTPUT_DIM = len_dec_voc
 	ENC_EMB_DIM = 256
@@ -401,9 +405,9 @@ def train():
 	train_loader = torch.utils.data.DataLoader(train_dataset, batch_size = BATCH_SIZE, shuffle=False, drop_last = True)
 
 	data_iter = iter(train_loader)
-	enc_sample, dec_sample = data_iter.next()
+	# enc_sample, dec_sample = data_iter.next()
 
-	out = model(enc_sample.to(DEVICE), dec_sample.to(DEVICE))
+	# out = model(enc_sample.to(DEVICE), dec_sample.to(DEVICE))
 
 
 	model.apply(init_weights)
@@ -453,10 +457,55 @@ def train():
 	print("Training Terminated. Saving model...")
 	torch.save(model.state_dict(), './model/nmt.pt')
 
+def test():
+	enc_data, dec_data, len_enc_voc, len_dec_voc = dataLoader("test")	
+	INPUT_DIM = len_enc_voc
+	OUTPUT_DIM = len_dec_voc
+	ENC_EMB_DIM = 256
+	DEC_EMB_DIM = 256
+	HID_DIM = 512
+	N_LAYERS = 2
+	ENC_DROPOUT = 0.5
+	DEC_DROPOUT = 0.5
+	CLIP = 1
+	N_EPOCHS = 10
 
+	enc = Encoder(INPUT_DIM, ENC_EMB_DIM, HID_DIM, N_LAYERS, ENC_DROPOUT)
+	dec = Decoder(OUTPUT_DIM, DEC_EMB_DIM, HID_DIM, N_LAYERS, DEC_DROPOUT)
+	model = Seq2Seq(enc, dec, DEVICE).to(DEVICE)
 
+	enc_tens = torch.tensor(enc_data, dtype = torch.int64).to(DEVICE)
+	dec_tens = torch.tensor(dec_data, dtype = torch.int64).to(DEVICE)
+	test_dataset = MyData(enc_tens, dec_tens)
 
+	test_loader = torch.utils.data.DataLoader(test_dataset, batch_size = BATCH_SIZE, shuffle=False, drop_last = True)
+	data_iter = iter(test_loader)
+	criterion = nn.CrossEntropyLoss()
+	model.eval()
 
+	epoch_loss = 0
+
+	with torch.no_grad():
+		for i, (enc,dec) in enumerate(test_loader):
+
+			src = enc
+			trg = dec
+
+			output = model(src, trg, 0)
+
+			output_dim  = output.shape[-1]
+			output = output[1:].view(-1, output_dim)
+			trg = trg[1:].view(-1)
+
+			loss = criterion(output, trg)
+
+			epoch_loss +=loss.item()
+
+def translate():
+	print("In Translation Mode. Press ctl+c to exit...")
+	print("Loading Model...")
+	while(1):
+		to_translate = input(">")
 
 def main():
 	parser = argparse.ArgumentParser()
@@ -467,9 +516,9 @@ def main():
 		train()
 
 	if args.input == "test":
-		print("test")
+		test()
 	if args.input == "translate":
-		print("translate")
+		translate()
 
 if __name__ == '__main__':
 	main()
