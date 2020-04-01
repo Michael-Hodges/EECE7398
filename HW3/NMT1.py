@@ -64,7 +64,7 @@ class Encoder(nn.Module):
 		
 		self.dropout = nn.Dropout(dropout)
 		
-	def forward(self, src):
+	def forward(self, src, src_len):
 		
 		#src = [batch size, src len]
 		# print(src.shape)
@@ -72,9 +72,11 @@ class Encoder(nn.Module):
 		# print(embedded.shape)
 		#embedded = [batch size, src len, emb dim]
 		
-		# embedded_packed = nn.utils.rnn.pack_padded_
+		embedded_packed = nn.utils.rnn.pack_padded_sequence(embedded, src_len, batch_first=True, enforce_sorted=False)
 
-		outputs, (hidden, cell) = self.rnn(embedded)
+		outputs, (hidden, cell) = self.rnn(embedded_packed)
+
+		nn.utils.rnn.pad_packed_sequence(outputs, batch_first=True, padding_value=0, total_length=70)
 		# print(outputs.shape)
 		# print(hidden.shape)
 		# print(cell.shape)
@@ -143,7 +145,7 @@ class Seq2Seq(nn.Module):
 		assert encoder.n_layers == decoder.n_layers, \
 			"Encoder and decoder must have equal number of layers!"
 		
-	def forward(self, src, trg, teacher_forcing_ratio = 0.5):
+	def forward(self, src, trg, src_len, teacher_forcing_ratio = 0.5):
 		
 		#src = [batch size, src len]
 		#trg = [batch size, trg len]
@@ -158,7 +160,7 @@ class Seq2Seq(nn.Module):
 		outputs = torch.zeros(batch_size, trg_len, trg_vocab_size).to(self.device)
 		# print(outputs.shape)
 		#last hidden state of the encoder is used as the initial hidden state of the decoder
-		hidden, cell = self.encoder(src)
+		hidden, cell = self.encoder(src, src_len)
 		
 		#first input to the decoder is the <sos> tokens
 		input = trg[:,0]
@@ -233,6 +235,7 @@ def line_id2token(line,vocab):
 def token2id(batch, vocab):
 	# print(batch)
 	id_list = [[] for i in range(len(batch))]
+	len_list = [0 for i in range(len(batch))]
 	max_len = 0
 	for ii in batch:
 		# id_list[ii] = []
@@ -243,14 +246,15 @@ def token2id(batch, vocab):
 			else:
 				id_list[ii].append(tmp)
 
-		tmp_len = len(id_list[ii])
-		if tmp_len>max_len:
-			max_len = tmp_len
+		len_list[ii] = len(id_list[ii])
+		if len_list[ii]>max_len:
+			max_len = len_list[ii]
 			# id_list[ii].append(jj)'
 		# tmp_len = len(batch[ii])
 		# if max_len<tmp_len:
 		# 	max_len = tmp_len
-	return id_list, max_len
+		# print(len_list[ii])
+	return id_list, max_len, len_list
 
 def id2token(batch, vocab):
 	token_list = [[] for i in range(len(batch))]
@@ -281,16 +285,6 @@ def load_data(enc_list, dec_list, max_training_size=None):
 			if len(enc)<=encode_max_size:
 				data_buckets[bucket_id].append([enc, dec])
 				break
-	# for i, _ in enumerate(data_buckets):
-	# 	# print(len(data_buckets[i]))
-	# 	# total: 133317
-	# 	# 21591
-	# 	# 24731
-	# 	# 20714
-	# 	# 23074
-	# 	# 21234
-	# 	# 21973
-	# 	sum += len(data_buckets[i])
 	return data_buckets
 
 def load_data_nb(enc_list, dec_list):
@@ -306,7 +300,6 @@ def load_data_nb(enc_list, dec_list):
 	return enc_pad, dec_pad
 
 def _get_buckets(bucket):
-
 	bucket_sizes = [len(bucket[b]) for b in range(len(BUCKETS))]
 	total_samples = sum(bucket_sizes)
 	# print(total_samples)
@@ -327,17 +320,22 @@ def get_batch(data_bucket, bucket_id, batch_size=1):
 	print()
 
 class MyData(torch.utils.data.Dataset):
-	def __init__(self, x, y):
+	def __init__(self, x, y, x_len, y_len):
 		self.source = x
 		self.target = y
+		self.scr_len = x_len
+		self.trg_len = y_len
+
 	def __getitem__(self, index):
 		# x = torch.stack(self.source[index])
 		# y = torch.stack(self.target[index])
 		# x = torch.stack(self.source[index])
 		x = self.source[index]
 		y = self.target[index]
+		x_len = self.scr_len[index]
+		y_len = self.trg_len[index]
 
-		return x, y
+		return x, y, x_len, y_len
 	def __len__(self):
 		return len(self.source)
 
@@ -353,11 +351,11 @@ def dataLoader(trn_tst):
 
 	en_train, vi_train, en_test, vi_test = get_lines()
 	if trn_tst == "train":
-		en_identified, max_en = token2id(en_train, en_indx)
-		vi_identified, max_vi = token2id(vi_train, vi_indx)
+		en_identified, max_en, en_len = token2id(en_train, en_indx)
+		vi_identified, max_vi, vi_len = token2id(vi_train, vi_indx)
 	if trn_tst == "test":
-		en_identified, max_en = token2id(en_test, en_indx)
-		vi_identified, max_vi = token2id(vi_test, vi_indx)
+		en_identified, max_en, en_len = token2id(en_test, en_indx)
+		vi_identified, max_vi, vi_len = token2id(vi_test, vi_indx)
 	print(len(en_identified))
 	# tokenized = id2token(identified, words)
 	assert len(en_identified) == len(vi_identified), "Translation data not the same length"
@@ -365,7 +363,7 @@ def dataLoader(trn_tst):
 	enc_data, dec_data = load_data_nb(en_identified, vi_identified)
 	# bucket_scale = _get_buckets(data_buckets)
 	print("Loading Model...")
-	return enc_data, dec_data, len(en_words), len(vi_words)
+	return enc_data, dec_data, len(en_words), len(vi_words), en_len, vi_len
 	# torchtext.data.Dataset(en_identified, vi_identified, )
 	# torchtext.data.Example.fromlist((en_identified[0], vi_identified[0]), (SRC, TRG))
 	# for ii, sample in enumerate(train_iterator):
@@ -382,7 +380,7 @@ def epoch_time(start_time, end_time):
 
 def train():
 	# data_bucket, bucket_scale, len_enc_voc, len_dec_voc = dataLoader()
-	enc_data, dec_data, len_enc_voc, len_dec_voc = dataLoader("train")
+	enc_data, dec_data, len_enc_voc, len_dec_voc, enc_sent_len, dec_sent_len = dataLoader("train")
 	INPUT_DIM = len_enc_voc
 	OUTPUT_DIM = len_dec_voc
 	ENC_EMB_DIM = 256
@@ -401,7 +399,7 @@ def train():
 
 	enc_tens = torch.tensor(enc_data, dtype = torch.int64).to(DEVICE)
 	dec_tens = torch.tensor(dec_data, dtype = torch.int64).to(DEVICE)
-	train_dataset = MyData(enc_tens, dec_tens)
+	train_dataset = MyData(enc_tens, dec_tens, enc_sent_len, dec_sent_len)
 
 	train_loader = torch.utils.data.DataLoader(train_dataset, batch_size = BATCH_SIZE, shuffle=False, drop_last = True)
 
@@ -420,13 +418,13 @@ def train():
 	for epoch in range(N_EPOCHS):
 		start_time = time.time()
 		epoch_loss = 0
-		for i, (enc,dec) in enumerate(data_iter):
+		for i, (enc,dec, src_len, trg_len) in enumerate(data_iter):
 			src = enc
 			trg = dec
 
 			optimizer.zero_grad()
 
-			output = model(src,trg)
+			output = model(src,trg, src_len)
 			# print("shape from model: {}".format(output.shape))
 			# trg = [batch size, trg len]
 			# output = [batch, trg len, output dim]
