@@ -76,7 +76,7 @@ class Encoder(nn.Module):
 
 		outputs, (hidden, cell) = self.rnn(embedded_packed)
 
-		nn.utils.rnn.pad_packed_sequence(outputs, batch_first=True, padding_value=0, total_length=70)
+		outputs, _ = nn.utils.rnn.pad_packed_sequence(outputs, batch_first=True, padding_value=0, total_length=70)
 		# print(outputs.shape)
 		# print(hidden.shape)
 		# print(cell.shape)
@@ -287,17 +287,22 @@ def load_data(enc_list, dec_list, max_training_size=None):
 				break
 	return data_buckets
 
-def load_data_nb(enc_list, dec_list):
+def load_data_nb(enc_list, dec_list, enc_len, dec_len):
 	enc_pad = []
 	dec_pad = []
+	enc_len_ret = []
+	dec_len_ret = []
 	ii = 0
-	for enc, dec in zip(enc_list, dec_list):
+	for enc, dec, enc_lens, dec_lens in zip(enc_list, dec_list, enc_len, dec_len):
 		if len(enc)<ENG_MAX_LEN and len(dec)<VI_MAX_LEN:
 			enc.extend(np.zeros(ENG_MAX_LEN-len(enc),dtype=int))
 			dec.extend(np.zeros(VI_MAX_LEN-len(dec),dtype=int))
 			enc_pad.append(enc)
 			dec_pad.append(dec)
-	return enc_pad, dec_pad
+			enc_len_ret.append(enc_lens)
+			dec_len_ret.append(dec_lens)
+
+	return enc_pad, dec_pad, enc_len_ret, dec_len_ret
 
 def _get_buckets(bucket):
 	bucket_sizes = [len(bucket[b]) for b in range(len(BUCKETS))]
@@ -360,7 +365,7 @@ def dataLoader(trn_tst):
 	# tokenized = id2token(identified, words)
 	assert len(en_identified) == len(vi_identified), "Translation data not the same length"
 	# data_buckets = load_data(en_identified, vi_identified)
-	enc_data, dec_data = load_data_nb(en_identified, vi_identified)
+	enc_data, dec_data, en_len, vi_len = load_data_nb(en_identified, vi_identified, en_len, vi_len)
 	# bucket_scale = _get_buckets(data_buckets)
 	print("Loading Model...")
 	return enc_data, dec_data, len(en_words), len(vi_words), en_len, vi_len
@@ -400,7 +405,7 @@ def train():
 	enc_tens = torch.tensor(enc_data, dtype = torch.int64).to(DEVICE)
 	dec_tens = torch.tensor(dec_data, dtype = torch.int64).to(DEVICE)
 	train_dataset = MyData(enc_tens, dec_tens, enc_sent_len, dec_sent_len)
-
+	print(max(enc_sent_len))
 	train_loader = torch.utils.data.DataLoader(train_dataset, batch_size = BATCH_SIZE, shuffle=False, drop_last = True)
 
 	data_iter = iter(train_loader)
