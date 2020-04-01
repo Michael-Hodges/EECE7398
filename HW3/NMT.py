@@ -1,38 +1,55 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-import sys
-import io
 import argparse
+import os
+import random
+import sys
+import time
+from collections import deque
 
 import numpy as np
 
 import torch
-from torch.autograd import Variable
 import torch.nn as nn
-import torch.nn.functional as F
-import torch.utils.data as Data
+import torch.optim as optim
 
-from torchtext.datasets import TranslationDataset
-from torchtext.data import Field, BucketIterator
-from torchtext.vocab import Vocab, Vectors
+import torchtext
+from torchtext.data import BucketIterator, Field
 
-import time
-import math
 import random
 
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+import pdb
 
-SRC = Field(tokenize = None,
-			# tokenizer_language="en",
-			init_token = '<sos>',
-			eos_token = '<eos>',
-			lower = True)
 
-TRG = Field(tokenize = None,
-			# tokenizer_language="vi_spacy_model",
-			init_token = '<sos>',
-			eos_token = '<eos>',
-			lower = True)
+EN_VOCAB_PATH = './E_V/vocab.en'
+VI_VOCAB_PATH = './E_V/vocab.vi'
+EN_TRAIN_PATH = './E_V/train.en'
+VI_TRAIN_PATH = './E_V/train.vi'
+EN_TEST_PATH = './E_V/tst2012.en' #'./E_V/tst2013.en'
+VI_TEST_PATH  = './E_V/tst2012.vi' #'./E_V/tst2013.vi'
+
+BATCH_SIZE = 64
+
+BUCKETS = [(10,10), (14,14), (18,18), (24,24), (33,33), (70,90)]
+
+ENG_MAX_LEN = 70
+VI_MAX_LEN = 90
+
+DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+# SRC = Field(
+# 			sequential=False, use_vocab=False, init_token=None, eos_token=None, 
+# 			fix_length=None, dtype=torch.int64, preprocessing=None, postprocessing=None, 
+# 			lower=False, tokenize=None, tokenizer_language=None, include_lengths=False, 
+# 			batch_first=False, pad_token='<pad>', unk_token=None, pad_first=False, 
+# 			truncate_first=False, stop_words=None, is_target=False
+# 			)
+# TRG = Field(
+# 			sequential=False, use_vocab=False, init_token=None, eos_token=None, 
+# 			fix_length=None, dtype=torch.int64, preprocessing=None, postprocessing=None, 
+# 			lower=False, tokenize=None, tokenizer_language=None, include_lengths=False, 
+# 			batch_first=False, pad_token='<pad>', unk_token=None, pad_first=False, 
+# 			truncate_first=False, stop_words=None, is_target=False
+# 	)
+
 
 class Encoder(nn.Module):
 	def __init__(self, input_dim, emb_dim, hid_dim, n_layers, dropout):
@@ -43,27 +60,31 @@ class Encoder(nn.Module):
 		
 		self.embedding = nn.Embedding(input_dim, emb_dim)
 		
-		self.rnn = nn.LSTM(emb_dim, hid_dim, n_layers, dropout = dropout)
+		self.rnn = nn.LSTM(emb_dim, hid_dim, n_layers, batch_first=True, dropout = dropout)
 		
 		self.dropout = nn.Dropout(dropout)
 		
 	def forward(self, src):
 		
-		#src = [src len, batch size]
-		# print("source size: {}".format(src.shape))
+		#src = [batch size, src len]
+		# print(src.shape)
 		embedded = self.dropout(self.embedding(src))
+		# print(embedded.shape)
 		
-		#embedded = [src len, batch size, emb dim]
+		#embedded = [batch size, src len, emb dim]
 		
 		outputs, (hidden, cell) = self.rnn(embedded)
-		
-		#outputs = [src len, batch size, hid dim * n directions]
+		# print(outputs.shape)
+		# print(hidden.shape)
+		# print(cell.shape)
+		#outputs = [batch size, src len, hid dim * n directions]
 		#hidden = [n layers * n directions, batch size, hid dim]
 		#cell = [n layers * n directions, batch size, hid dim]
 		
 		#outputs are always from the top hidden layer
 		
 		return hidden, cell
+
 class Decoder(nn.Module):
 	def __init__(self, output_dim, emb_dim, hid_dim, n_layers, dropout):
 		super().__init__()
@@ -74,7 +95,7 @@ class Decoder(nn.Module):
 		
 		self.embedding = nn.Embedding(output_dim, emb_dim)
 		
-		self.rnn = nn.LSTM(emb_dim, hid_dim, n_layers, dropout = dropout)
+		self.rnn = nn.LSTM(emb_dim, hid_dim, n_layers, batch_first=False, dropout = dropout)
 		
 		self.fc_out = nn.Linear(hid_dim, output_dim)
 		
@@ -89,18 +110,11 @@ class Decoder(nn.Module):
 		#n directions in the decoder will both always be 1, therefore:
 		#hidden = [n layers, batch size, hid dim]
 		#context = [n layers, batch size, hid dim]
-		
 		input = input.unsqueeze(0)
-		
-		#input = [1, batch size]
-		
 		embedded = self.dropout(self.embedding(input))
-		
 		#embedded = [1, batch size, emb dim]
-				
 		output, (hidden, cell) = self.rnn(embedded, (hidden, cell))
-		
-		#output = [seq len, batch size, hid dim * n directions]
+		#output = [batch size, seq len, hid dim * n directions]
 		#hidden = [n layers * n directions, batch size, hid dim]
 		#cell = [n layers * n directions, batch size, hid dim]
 		
@@ -130,34 +144,34 @@ class Seq2Seq(nn.Module):
 		
 	def forward(self, src, trg, teacher_forcing_ratio = 0.5):
 		
-		#src = [src len, batch size]
-		#trg = [trg len, batch size]
+		#src = [batch size, src len]
+		#trg = [batch size, trg len]
 		#teacher_forcing_ratio is probability to use teacher forcing
 		#e.g. if teacher_forcing_ratio is 0.75 we use ground-truth inputs 75% of the time
-		
-		batch_size = trg.shape[1]
-		trg_len = trg.shape[0]
+		# print(trg.shape)
+		batch_size = trg.shape[0]
+		trg_len = trg.shape[1]
 		trg_vocab_size = self.decoder.output_dim
 		
 		#tensor to store decoder outputs
-		outputs = torch.zeros(trg_len, batch_size, trg_vocab_size).to(self.device)
-		
+		outputs = torch.zeros(batch_size, trg_len, trg_vocab_size).to(self.device)
+		# print(outputs.shape)
 		#last hidden state of the encoder is used as the initial hidden state of the decoder
 		hidden, cell = self.encoder(src)
-		hidden.to(device)
-		cell.to(device)
 		
 		#first input to the decoder is the <sos> tokens
-		input = trg[0,:]
+		input = trg[:,0]
+		# print(input.shape)
 		
-		for t in range(1, trg_len):
+		for t in range(0, trg_len):
 			
 			#insert input token embedding, previous hidden and previous cell states
 			#receive output tensor (predictions) and new hidden and cell states
+			
 			output, hidden, cell = self.decoder(input, hidden, cell)
 			
 			#place predictions in a tensor holding predictions for each token
-			outputs[t] = output
+			outputs[:,t] = output
 			
 			#decide if we are going to use teacher forcing or not
 			teacher_force = random.random() < teacher_forcing_ratio
@@ -167,264 +181,296 @@ class Seq2Seq(nn.Module):
 			
 			#if teacher forcing, use actual next token as next input
 			#if not, use predicted token
-			input = trg[t] if teacher_force else top1
+			input = trg[:,t] if teacher_force else top1
 		
 		return outputs
-
-def loadData():
-	# endict = open('./E_V/dict.en-vi')
-	# trainViet = open('./E_V/train.vi')
-	# trainEN = open('./E_V/train.vi')
-	# print(endict.readline())
-	# return endict
-
-	myData = TranslationDataset('./E_V/train', 
-							('.en','.vi'), (SRC,TRG))
-
-	train_data, test_data = myData.splits(exts = ('.en', '.vi'),
-							fields = (SRC,TRG), 
-							path="./E_V/", 
-							train='train',
-							validation=None,
-							test='tst2012')
-	vocabData = TranslationDataset('./E_V/vocab',('.en','.vi'), (SRC,TRG))
-
-
-	# fileen = open('./E_V/vocab.en','r')
-	# filevi = open('./E_V/vocab.vi','r')
-	enVec = 0 #Vectors('./E_V/vocab.en')
-	viVec = 0 #Vectors('./E_V/vocab.vi')
-	# fileen.close()
-	# filevi.close()
-	# en_vocab, vi_vocab = myData.splits(exts = ('.en','.vi'),
-	# 						fields = (SRC,TRG),
-	# 						path = "./E_V/",
-	# 						train = 'vocab',
-	# 						validation = None,
-	# 						test = None)
-	return train_data, test_data, vocabData
-
-def tokenize_en(text):
-	print("TODO")
-	return []
-
-def tokenize_vi(text):
-	print("TODO")
-	return []
 
 def init_weights(m):
 	for name, param in m.named_parameters():
 		nn.init.uniform_(param.data, -0.08, 0.08)
 
+def count_parameters(model):
+	return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
-def trainStep(model, iterator, optimizer, criterion, clip):
-	
-	epoch_loss = 0
-	
-	for i, batch in enumerate(iterator):
-		
-		src = batch.src
-		trg = batch.trg
-		
-		optimizer.zero_grad()
-		
-		output = model(src, trg)
-		
-		#trg = [trg len, batch size]
-		#output = [trg len, batch size, output dim]
-		
-		output_dim = output.shape[-1]
-		
-		output = output[1:].view(-1, output_dim)
-		trg = trg[1:].view(-1)
-		
-		#trg = [(trg len - 1) * batch size]
-		#output = [(trg len - 1) * batch size, output dim]
-		
-		loss = criterion(output, trg)
-		
-		loss.backward()
-		
-		torch.nn.utils.clip_grad_norm_(model.parameters(), clip)
-		
-		optimizer.step()
-		
-		epoch_loss += loss.item()
-		
-	return epoch_loss / len(iterator)
+############### DATA Functions ###################
+def get_lines():
+	# Create dicts used when calling token2id
+	id2line_en = {}
+	id2line_vi = {}
+	id2line_test_en = {}
+	id2line_test_vi = {}
+	dicts = [id2line_en, id2line_vi, id2line_test_en, id2line_test_vi]	
+	paths = [EN_TRAIN_PATH, VI_TRAIN_PATH, EN_TEST_PATH, VI_TEST_PATH]
+
+	for ii, path in enumerate(paths): # go through all paths in this case english train and viet train
+		with open(path, 'r') as f:
+			for jj, line in enumerate(f):
+				parts = ['<s>']
+				line.split()
+				parts.extend(line.split() + ['</s>'])
+				dicts[ii][jj] = parts # store each sentence in the appropriate dictionary dicts[dict choice][line number]
+	return id2line_en, id2line_vi, id2line_test_en, id2line_test_vi
+
+def line_token2id(line,vocab):
+	# takes a list of tokens and converts it to a list of ids using vocab
+	id_line = []
+	for i in line:
+		tmp = vocab.get(i)
+		if tmp == None:
+			id_line.append(vocab.get('<unk>'))
+		else:
+			id_line.append(tmp)
+	return id_line
+
+def line_id2token(line,vocab):
+	# takes a list of ids and convert it to token form
+	tmp = []
+	for i in line:
+		tmp.append(vocab[i])
+	return tmp	
+
+def token2id(batch, vocab):
+	# print(batch)
+	id_list = [[] for i in range(len(batch))]
+	max_len = 0
+	for ii in batch:
+		# id_list[ii] = []
+		for jj in batch[ii]:
+			tmp = vocab.get(jj)
+			if tmp == None:
+				id_list[ii].append(vocab.get('<unk>'))
+			else:
+				id_list[ii].append(tmp)
+
+		tmp_len = len(id_list[ii])
+		if tmp_len>max_len:
+			max_len = tmp_len
+			# id_list[ii].append(jj)'
+		# tmp_len = len(batch[ii])
+		# if max_len<tmp_len:
+		# 	max_len = tmp_len
+	return id_list, max_len
+
+def id2token(batch, vocab):
+	token_list = [[] for i in range(len(batch))]
+	for ii, id in enumerate(batch):
+		for jj in batch[ii]:
+			token_list[ii].append(vocab[jj])
+	return token_list
+
+def load_vocab(vocab_path):
+	# returns list of words as well as dictionary for converting words into numbers
+	words = ['<pad>']
+	# print(words)
+	with open(vocab_path, 'r') as f:
+		words1 = f.read().splitlines()
+		# words = words.append(f.read().splitlines())
+	words.extend(words1)
+	return words, {words[i]: i for i in range(len(words))}
+
+def load_data(enc_list, dec_list, max_training_size=None):
+	data_buckets = [[] for _ in BUCKETS]
+	ii = 0
+	for enc, dec in zip(enc_list, dec_list):
+		# print("ENC: {}".format(enc))
+		# print("DEC: {}".format(dec))
+
+		for bucket_id, (encode_max_size, decode_max_size) in enumerate(BUCKETS):
+			# print(bucket_id, encode_max_size, decode_max_size)
+			if len(enc)<=encode_max_size:
+				data_buckets[bucket_id].append([enc, dec])
+				break
+	# for i, _ in enumerate(data_buckets):
+	# 	# print(len(data_buckets[i]))
+	# 	# total: 133317
+	# 	# 21591
+	# 	# 24731
+	# 	# 20714
+	# 	# 23074
+	# 	# 21234
+	# 	# 21973
+	# 	sum += len(data_buckets[i])
+	return data_buckets
+
+def load_data_nb(enc_list, dec_list):
+	enc_pad = []
+	dec_pad = []
+	ii = 0
+	for enc, dec in zip(enc_list, dec_list):
+		if len(enc)<ENG_MAX_LEN and len(dec)<VI_MAX_LEN:
+			enc.extend(np.zeros(ENG_MAX_LEN-len(enc),dtype=int))
+			dec.extend(np.zeros(VI_MAX_LEN-len(dec),dtype=int))
+			enc_pad.append(enc)
+			dec_pad.append(dec)
+	return enc_pad, dec_pad
+
+def _get_buckets(bucket):
+
+	bucket_sizes = [len(bucket[b]) for b in range(len(BUCKETS))]
+	total_samples = sum(bucket_sizes)
+	# print(total_samples)
+	print("Number of samples in each bucket: {}".format(bucket_sizes))
+	# print("Bucket scale: {}".format(np.cumsum(bucket_sizes/total_samples)))
+	print(np.cumsum(bucket_sizes))
+	buckets_scale = [sum(bucket_sizes[:i+1]) / total_samples for i in range(len(bucket_sizes))]
+	print("Bucket scale: {}".format(buckets_scale))
+	return buckets_scale
+
+def _get_random_bucket(bucket_scale):
+	rand = random.random()
+	return min([i for i in range(len(bucket_scale))
+		if bucket_scale[i] > rand])
 
 
-def train(model, train_iterator):
-	model.apply(init_weights)
-	model.train()
-	optimizer = torch.optim.Adam(model.parameters())
-	TRG_PAD_IDX = TRG.vocab.stoi[TRG.pad_token]
+def get_batch(data_bucket, bucket_id, batch_size=1):
+	print()
 
-	criterion = nn.CrossEntropyLoss(ignore_index = TRG_PAD_IDX)
+class MyData(torch.utils.data.Dataset):
+	def __init__(self, x, y):
+		self.source = x
+		self.target = y
+	def __getitem__(self, index):
+		# x = torch.stack(self.source[index])
+		# y = torch.stack(self.target[index])
+		# x = torch.stack(self.source[index])
+		x = self.source[index]
+		y = self.target[index]
 
-	N_EPOCHS = 10
-	CLIP = 1
+		return x, y
+	def __len__(self):
+		return len(self.source)
 
-	best_valid_loss = float('inf')
+def dataLoader():
+	print("Processing Data")
+	en_words, en_indx = load_vocab('./E_V/vocab.en')
+	vi_words, vi_indx = load_vocab('./E_V/vocab.vi')
+	# print(en_words[0:20])
+	# print(en_indx['<unk>'])
+	print("ENC_VOCAB: {}".format(len(en_words)))
+	print("DEC_VOCAB: {}".format(len(vi_words)))
+	# print("Bucket: {}".format(BUCKETS))
 
-	for epoch in range(N_EPOCHS):
-		
-		start_time = time.time()
-		
-		train_loss = trainStep(model, train_iterator, optimizer, criterion, CLIP)
-		# valid_loss = evaluate(model, test_iterator, criterion)
-		end_time = time.time()
-		
-		epoch_mins, epoch_secs = epoch_time(start_time, end_time)
-		
-		if valid_loss < best_valid_loss:
-			best_valid_loss = valid_loss
-			print("Training terminated. Saving model...")
-			torch.save(model.state_dict(), './model/tut1-model.pt')
-		
-		print(f'Epoch: {epoch+1:02} | Time: {epoch_mins}m {epoch_secs}s')
-		print(f'\tTrain Loss: {train_loss:.3f} | Train PPL: {math.exp(train_loss):7.3f}')
-		# print(f'\t Val. Loss: {valid_loss:.3f} |  Val. PPL: {math.exp(valid_loss):7.3f}')
-
-def evaluate(model, iterator, criterion):
-	
-	model.eval()
-	
-	epoch_loss = 0
-	
-	with torch.no_grad():
-	
-		for i, batch in enumerate(iterator):
-
-			src = batch.src
-			trg = batch.trg
-
-			output = model(src, trg, 0) #turn off teacher forcing
-
-			#trg = [trg len, batch size]
-			#output = [trg len, batch size, output dim]
-
-			output_dim = output.shape[-1]
-			
-			output = output[1:].view(-1, output_dim)
-			trg = trg[1:].view(-1)
-
-			#trg = [(trg len - 1) * batch size]
-			#output = [(trg len - 1) * batch size, output dim]
-
-			loss = criterion(output, trg)
-			
-			epoch_loss += loss.item()
-		
-	return epoch_loss / len(iterator)
-
-# def test():
-# 	#TODO
-# 	# load model
-# 	print("Loading Model...")
-# 	# net = Net()
-# 	# net.load_state_dict(torch.load("./model/lstm.pt"))
-# 	# net.eval()
-# 	# perform translation
-# 	# Display average BLEU score with smoothing method 1. No less than 0.07 (7%)
-# 	print("test")
-def epoch_time(start_time, end_time):
-    elapsed_time = end_time - start_time
-    elapsed_mins = int(elapsed_time / 60)
-    elapsed_secs = int(elapsed_time - (elapsed_mins * 60))
-    return elapsed_mins, elapsed_secs
-
-def translate():
-	#TODO
+	en_train, vi_train, en_test, vi_test = get_lines()
+	en_identified, max_en = token2id(en_train, en_indx)
+	vi_identified, max_vi = token2id(vi_train, vi_indx)
+	print(len(en_identified))
+	# tokenized = id2token(identified, words)
+	assert len(en_identified) == len(vi_identified), "Translation data not the same length"
+	# data_buckets = load_data(en_identified, vi_identified)
+	enc_data, dec_data = load_data_nb(en_identified, vi_identified)
+	# bucket_scale = _get_buckets(data_buckets)
 	print("Loading Model...")
-	net = Net()
-	net.load_state_dict(torch.load("./model/lstm.pt"))
-	net.eval()
-	print("In Translate Mode, Use CTL + C to exit")
-	while(1):
-		inString = input("> ")
-		print(inString)
-	# load model
-	# accept user input
-	# print output
-	print("translate")
+	return enc_data, dec_data, len(en_words), len(vi_words)
+	# torchtext.data.Dataset(en_identified, vi_identified, )
+	# torchtext.data.Example.fromlist((en_identified[0], vi_identified[0]), (SRC, TRG))
+	# for ii, sample in enumerate(train_iterator):
+		# print(ii + ":" + sample)
 
+def train_step(data_iter):
+	print()
 
+def epoch_time(start_time, end_time):
+	elapsed_time = end_time - start_time
+	elapsed_mins = int(elapsed_time / 60)
+	elapsed_secs = int(elapsed_time - (elapsed_mins * 60))
+	return elapsed_mins, elapsed_secs
 
-if __name__ == '__main__':
-	parser = argparse.ArgumentParser()
-	parser.add_argument('input')
-	args = parser.parse_args()
-	
-	# print(viet_train.read())
-	
-	train_data, test_data, vocabData = loadData()
-	print(vocabData)
-
-	print(f"Number of training examples: {len(train_data)}")
-	print(f"Number of testing examples: {len(test_data)}")
-	print(vars(train_data.examples[0]))
-	print(vocabData)
-	SRC.build_vocab(vocabData, min_freq = 0)
-	TRG.build_vocab(vocabData, min_freq = 0)
-	print(f"ENC_VOCAB: {len(SRC.vocab)}")
-	print(f"DEC_VOCAB: {len(TRG.vocab)}")
-	print(SRC.vocab)
-	INPUT_DIM = len(SRC.vocab)
-	OUTPUT_DIM = len(TRG.vocab)
+def train():
+	# data_bucket, bucket_scale, len_enc_voc, len_dec_voc = dataLoader()
+	enc_data, dec_data, len_enc_voc, len_dec_voc = dataLoader()
+	INPUT_DIM = len_enc_voc
+	OUTPUT_DIM = len_dec_voc
 	ENC_EMB_DIM = 256
 	DEC_EMB_DIM = 256
 	HID_DIM = 512
-	N_LAYERS = 1
+	N_LAYERS = 2
 	ENC_DROPOUT = 0.5
 	DEC_DROPOUT = 0.5
-	BATCH_SIZE = 32
-
-	train_iterator, test_iterator = BucketIterator.splits(
-		(train_data, test_data), 
-		batch_size = BATCH_SIZE, 
-		device = device)
-	batch = next(iter(train_iterator))
-	# print(batch)
-	# print(train_iterator, test_iterator)
-	# print("Bucket: ")
-	# print("Number of samples in each bucket: ")
-	# print("Bucket scale: ")
-
-
-	print("Loading Model...")
-
+	CLIP = 1
+	N_EPOCHS = 10
 
 	enc = Encoder(INPUT_DIM, ENC_EMB_DIM, HID_DIM, N_LAYERS, ENC_DROPOUT)
 	dec = Decoder(OUTPUT_DIM, DEC_EMB_DIM, HID_DIM, N_LAYERS, DEC_DROPOUT)
-	model = Seq2Seq(enc, dec, device).to(device)	
+	model = Seq2Seq(enc, dec, DEVICE).to(DEVICE)
+	print(f'The model has {count_parameters(model):,} trainable parameters')
+
+	enc_tens = torch.tensor(enc_data, dtype = torch.int64).to(DEVICE)
+	dec_tens = torch.tensor(dec_data, dtype = torch.int64).to(DEVICE)
+	train_dataset = MyData(enc_tens, dec_tens)
+
+	train_loader = torch.utils.data.DataLoader(train_dataset, batch_size = BATCH_SIZE, shuffle=False, drop_last = True)
+
+	data_iter = iter(train_loader)
+	enc_sample, dec_sample = data_iter.next()
+
+	out = model(enc_sample.to(DEVICE), dec_sample.to(DEVICE))
 
 
+	model.apply(init_weights)
+	optimizer = optim.Adam(model.parameters())
+	criterion = nn.CrossEntropyLoss()
+	model.train()
+	
+
+	for epoch in range(N_EPOCHS):
+		start_time = time.time()
+		epoch_loss = 0
+		for i, (enc,dec) in enumerate(data_iter):
+			src = enc
+			trg = dec
+
+			optimizer.zero_grad()
+
+			output = model(src,trg)
+			# print("shape from model: {}".format(output.shape))
+			# trg = [batch size, trg len]
+			# output = [batch, trg len, output dim]
+
+			output_dim  = output.shape[-1]
+			# print("output dimension: {}".format(output_dim))
+			output = output[1:].view(-1, output_dim)
+			trg = trg[1:].view(-1)
+			# print("output shape: {}".format(output.shape))
+			# print("target shape:{}".format(trg.shape))
+
+			loss = criterion(output,trg)
+
+			loss.backward()
+
+			torch.nn.utils.clip_grad_norm(model.parameters(), CLIP)_
+
+			optimizer.step()
+
+			epoch_loss += loss.item()
+
+		epoch_loss = epoch_loss/len(data_iter)
+
+		end_time = time.time()
+		epoch_min, epoch_seconds = epoch_time(start_time, end_time)
+		print("Epoch: {} | Time: {}m {}s".format(epoch, start_time, end_time))
+		print("Train Loss: {}".format(epoch_loss))
+
+	print("Training Terminated. Saving model...")
+	torch.save(model.state_dict(), './model/nmt.pt')
+
+
+
+
+
+
+def main():
+	parser = argparse.ArgumentParser()
+	parser.add_argument('input')
+	args = parser.parse_args()
 
 	if args.input == "train":
-		print("train")
-		# train(model, train_iterator)
+		train()
 
 	if args.input == "test":
-		# test()
 		print("test")
 	if args.input == "translate":
-		translate()
+		print("translate")
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+if __name__ == '__main__':
+	main()
+	# dataLoader()
