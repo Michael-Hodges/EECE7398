@@ -417,10 +417,10 @@ def train():
 	model.apply(init_weights)
 	optimizer = optim.Adam(model.parameters(), 0.0001)
 	criterion = nn.CrossEntropyLoss(ignore_index=0)
+	model.train()
 	
 
 	for epoch in range(N_EPOCHS):
-		model.train()
 		start_time = time.time()
 		epoch_loss = 0
 		for i, (enc,dec, src_len, trg_len) in enumerate(data_iter):
