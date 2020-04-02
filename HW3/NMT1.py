@@ -581,18 +581,18 @@ def translate():
 	enc = Encoder(INPUT_DIM, ENC_EMB_DIM, HID_DIM, N_LAYERS, ENC_DROPOUT)
 	dec = Decoder(OUTPUT_DIM, DEC_EMB_DIM, HID_DIM, N_LAYERS, DEC_DROPOUT)
 	model = Seq2Seq(enc, dec, DEVICE).to(DEVICE)
-	
-	# model.load_state_dict(torch.load('./model/nmt.pt'))
-	# while(1):
-	# 	to_translate = input(">")
-	to_translate = "hello who are you"
-	to_translate = "<s> "+to_translate+" </s>"
-	to_translate = to_translate.split()
-	sent_id, sent_len = line_token2id(to_translate,en_indx)
-	padded_sent = pad(sent_id, 70)
-	translate_indx = translate_one(sent_id,sent_len, en_indx, vi_indx, model, max_len=90)
-	translated_tokens = line_id2token(translate_indx, vi_words)
-	print(" ".join(translated_tokens))
+
+	model.load_state_dict(torch.load('./model/nmt.pt'))
+	while(1):
+		to_translate = input(">")
+	# to_translate = "And these are the questions that we have to worry about for the next 50 years ."
+		to_translate = "<s> "+to_translate+" </s>"
+		to_translate = to_translate.split()
+		sent_id, sent_len = line_token2id(to_translate,en_indx)
+		padded_sent = pad(sent_id, 70)
+		translate_indx = translate_one(sent_id,sent_len, en_indx, vi_indx, model, max_len=90)
+		translated_tokens = line_id2token(translate_indx, vi_words)
+		print(" ".join(translated_tokens))
 
 def main():
 	parser = argparse.ArgumentParser()
