@@ -11,6 +11,8 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 
+from nltk.tranlate import bleu_score
+
 import torchtext
 from torchtext.data import BucketIterator, Field
 
@@ -432,7 +434,7 @@ def train():
 	enc = Encoder(INPUT_DIM, ENC_EMB_DIM, HID_DIM, N_LAYERS, ENC_DROPOUT)
 	dec = Decoder(OUTPUT_DIM, DEC_EMB_DIM, HID_DIM, N_LAYERS, DEC_DROPOUT)
 	model = Seq2Seq(enc, dec, DEVICE).to(DEVICE)
-	print(f'The model has {count_parameters(model):,} trainable parameters')
+	# print(f'The model has {count_parameters(model):,} trainable parameters')
 
 	enc_tens = torch.tensor(enc_data, dtype = torch.int64).to(DEVICE)
 	dec_tens = torch.tensor(dec_data, dtype = torch.int64).to(DEVICE)
@@ -456,34 +458,6 @@ def train():
 		start_time = time.time()
 		train_loss = train_step(model, data_iter, optimizer, criterion, CLIP)
 		# for i, (enc,dec, src_len, trg_len) in enumerate(data_iter):
-		# 	src = enc
-		# 	trg = dec
-
-		# 	optimizer.zero_grad()
-
-		# 	output = model(src,trg, src_len)
-		# 	# print("shape from model: {}".format(output.shape))
-		# 	# trg = [batch size, trg len]
-		# 	# output = [batch, trg len, output dim]
-
-		# 	output_dim  = output.shape[-1]
-		# 	# print("output dimension: {}".format(output_dim))
-		# 	output = output[1:].view(-1, output_dim)
-		# 	trg = trg[1:].view(-1)
-		# 	# print("output shape: {}".format(output.shape))
-		# 	# print("target shape:{}".format(trg.shape))
-
-		# 	loss = criterion(output,trg)
-
-		# 	loss.backward()
-
-		# 	torch.nn.utils.clip_grad_norm_(model.parameters(), CLIP)
-
-		# 	optimizer.step()
-
-		# 	epoch_loss += loss.item()
-
-		# epoch_loss = epoch_loss/len(data_iter)
 
 		end_time = time.time()
 		epoch_min, epoch_seconds = epoch_time(start_time, end_time)
@@ -496,7 +470,7 @@ def train():
 
 def evaluate_step(model,iterator,criterion):
 	model.eval()
-	epoch_loss = 0
+	average_bleu = 0
 
 	with torch.no_grad():
 		for i, (enc,dec, src_len, trg_len) in enumerate(iterator):
@@ -504,7 +478,7 @@ def evaluate_step(model,iterator,criterion):
 			trg = dec
 
 			output = model(src,trg, src_len, 0)
-
+			print(output[0])
 			# print("shape from model: {}".format(output.shape))
 			# trg = [batch size, trg len]
 			# output = [batch, trg len, output dim]
@@ -520,8 +494,8 @@ def evaluate_step(model,iterator,criterion):
 
 			epoch_loss += loss.item()
 
-			print("Batch: {}/{}, Loss:{}".format(i,len(data_iter), loss.item()))
-	return epoch_loss/len(iterator)
+			# print("Batch: {}/{}, Loss:{}".format(i,len(data_iter), loss.item()))
+	return average_bleu
 
 def test():
 	enc_data, dec_data, len_enc_voc, len_dec_voc = dataLoader("test")	
