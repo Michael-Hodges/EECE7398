@@ -69,8 +69,8 @@ class Encoder(nn.Module):
 	def forward(self, src, src_len):
 
 		#src = [batch size, src len]
-		print("source shape: {}".format(src.shape))
-		print("source len shape: {}".format(src_len.shape))
+		# print("source shape: {}".format(src.shape))
+		# print("source len shape: {}".format(src_len.shape))
 		embedded = self.dropout(self.embedding(src))
 		# print(embedded.shape)
 		#embedded = [batch size, src len, emb dim]
@@ -541,21 +541,21 @@ def translate_one(sentence, s_len, eng_idx, viet_idx, model, max_len = 90):
 		hidden, cell = model.encoder(src_tens, src_len)
 	trg = torch.zeros(src_tens.shape[0], max_len, dtype=torch.long).to(DEVICE)
 	trg[:,0] = viet_idx['<s>']
-	print("trg.shape: {}".format(trg.shape))
-	print("trg: {}".format(trg))
+	# print("trg.shape: {}".format(trg.shape))
+	# print("trg: {}".format(trg))
 	for i in range(max_len):
 		with torch.no_grad():
 			prediction, hidden, cell = model.decoder(trg[:,i], hidden, cell)
 			prediction = prediction.argmax(1).item()
-			print(prediction)
+			# print(prediction)
 			if prediction == viet_idx['</s>']:
 				break
 			try:
 				trg[:,i+1] = prediction
 			except:
-				print("Did not reach </s> token before reaching out of index: {} must be < {}".format(i+1, max_len))
+				print("Did not reach </s> token before reaching out of index: {} must be < {} \n".format(i+1, max_len))
 	# print(trg)
-	return trg
+	return trg.squeeze(0)
 
 def pad(sentence, max_len):
 	if len(sentence) == max_len:
@@ -590,7 +590,9 @@ def translate():
 	to_translate = to_translate.split()
 	sent_id, sent_len = line_token2id(to_translate,en_indx)
 	padded_sent = pad(sent_id, 70)
-	translate_one(sent_id,sent_len, en_indx, vi_indx, model, max_len=90)
+	translate_indx = translate_one(sent_id,sent_len, en_indx, vi_indx, model, max_len=90)
+	translated_tokens = line_id2token(translate_indx, vi_words)
+	print(" ".join(translated_tokens))
 
 def main():
 	parser = argparse.ArgumentParser()
