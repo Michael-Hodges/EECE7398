@@ -440,18 +440,19 @@ def train():
 	print(max(enc_sent_len))
 	train_loader = torch.utils.data.DataLoader(train_dataset, batch_size = BATCH_SIZE, shuffle=False, drop_last = True)
 
-	data_iter = iter(train_loader)
+	
 	# enc_sample, dec_sample = data_iter.next()
 
 	# out = model(enc_sample.to(DEVICE), dec_sample.to(DEVICE))
 
 
 	model.apply(init_weights)
-	optimizer = optim.Adam(model.parameters(), 0.0001)
+	optimizer = optim.Adam(model.parameters(), 0.0005)
 	criterion = nn.CrossEntropyLoss(ignore_index=0)
 	
 
 	for epoch in range(N_EPOCHS):
+		data_iter = iter(train_loader)
 		start_time = time.time()
 		train_loss = train_step(model, data_iter, optimizer, criterion, CLIP)
 		# for i, (enc,dec, src_len, trg_len) in enumerate(data_iter):
