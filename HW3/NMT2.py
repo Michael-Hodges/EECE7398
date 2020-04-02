@@ -463,7 +463,7 @@ def train():
 		for i, (enc,dec, src_len, trg_len) in enumerate(data_iter):
 			src = enc
 			trg = dec
-
+			mask=torch.IntTensor((enc!=0).numpy().astype(int)).to(Device)
 			optimizer.zero_grad()
 
 			output = model(src,src_len, trg, 0.5)
