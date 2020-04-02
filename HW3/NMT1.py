@@ -11,7 +11,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 
-from nltk.tranlate.bleu_score import corpus_bleu, Smoothing_function
+from nltk.translate.bleu_score import corpus_bleu, SmoothingFunction
 
 import torchtext
 from torchtext.data import BucketIterator, Field
@@ -38,17 +38,17 @@ VI_MAX_LEN = 90
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 # SRC = Field(
-# 			sequential=False, use_vocab=False, init_token=None, eos_token=None, 
-# 			fix_length=None, dtype=torch.int64, preprocessing=None, postprocessing=None, 
-# 			lower=False, tokenize=None, tokenizer_language=None, include_lengths=False, 
-# 			batch_first=False, pad_token='<pad>', unk_token=None, pad_first=False, 
+# 			sequential=False, use_vocab=False, init_token=None, eos_token=None,
+# 			fix_length=None, dtype=torch.int64, preprocessing=None, postprocessing=None,
+# 			lower=False, tokenize=None, tokenizer_language=None, include_lengths=False,
+# 			batch_first=False, pad_token='<pad>', unk_token=None, pad_first=False,
 # 			truncate_first=False, stop_words=None, is_target=False
 # 			)
 # TRG = Field(
-# 			sequential=False, use_vocab=False, init_token=None, eos_token=None, 
-# 			fix_length=None, dtype=torch.int64, preprocessing=None, postprocessing=None, 
-# 			lower=False, tokenize=None, tokenizer_language=None, include_lengths=False, 
-# 			batch_first=False, pad_token='<pad>', unk_token=None, pad_first=False, 
+# 			sequential=False, use_vocab=False, init_token=None, eos_token=None,
+# 			fix_length=None, dtype=torch.int64, preprocessing=None, postprocessing=None,
+# 			lower=False, tokenize=None, tokenizer_language=None, include_lengths=False,
+# 			batch_first=False, pad_token='<pad>', unk_token=None, pad_first=False,
 # 			truncate_first=False, stop_words=None, is_target=False
 # 	)
 
@@ -56,24 +56,24 @@ DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 class Encoder(nn.Module):
 	def __init__(self, input_dim, emb_dim, hid_dim, n_layers, dropout):
 		super().__init__()
-		
+
 		self.hid_dim = hid_dim
 		self.n_layers = n_layers
-		
+
 		self.embedding = nn.Embedding(input_dim, emb_dim)
-		
+
 		self.rnn = nn.LSTM(emb_dim, hid_dim, n_layers, batch_first=True, dropout = dropout)
-		
+
 		self.dropout = nn.Dropout(dropout)
-		
+
 	def forward(self, src, src_len):
-		
+
 		#src = [batch size, src len]
 		# print(src.shape)
 		embedded = self.dropout(self.embedding(src))
 		# print(embedded.shape)
 		#embedded = [batch size, src len, emb dim]
-		
+
 		embedded_packed = nn.utils.rnn.pack_padded_sequence(embedded, src_len, batch_first=True, enforce_sorted=False)
 
 		outputs, (hidden, cell) = self.rnn(embedded_packed)
@@ -85,33 +85,33 @@ class Encoder(nn.Module):
 		#outputs = [batch size, src len, hid dim * n directions]
 		#hidden = [n layers * n directions, batch size, hid dim]
 		#cell = [n layers * n directions, batch size, hid dim]
-		
+
 		#outputs are always from the top hidden layer
-		
+
 		return hidden, cell
 
 class Decoder(nn.Module):
 	def __init__(self, output_dim, emb_dim, hid_dim, n_layers, dropout):
 		super().__init__()
-		
+
 		self.output_dim = output_dim
 		self.hid_dim = hid_dim
 		self.n_layers = n_layers
-		
+
 		self.embedding = nn.Embedding(output_dim, emb_dim)
-		
+
 		self.rnn = nn.LSTM(emb_dim, hid_dim, n_layers, batch_first=False, dropout = dropout)
-		
+
 		self.fc_out = nn.Linear(hid_dim, output_dim)
-		
+
 		self.dropout = nn.Dropout(dropout)
-		
+
 	def forward(self, input, hidden, cell):
-		
+
 		#input = [batch size]
 		#hidden = [n layers * n directions, batch size, hid dim]
 		#cell = [n layers * n directions, batch size, hid dim]
-		
+
 		#n directions in the decoder will both always be 1, therefore:
 		#hidden = [n layers, batch size, hid dim]
 		#context = [n layers, batch size, hid dim]
@@ -122,33 +122,33 @@ class Decoder(nn.Module):
 		#output = [batch size, seq len, hid dim * n directions]
 		#hidden = [n layers * n directions, batch size, hid dim]
 		#cell = [n layers * n directions, batch size, hid dim]
-		
+
 		#seq len and n directions will always be 1 in the decoder, therefore:
 		#output = [1, batch size, hid dim]
 		#hidden = [n layers, batch size, hid dim]
 		#cell = [n layers, batch size, hid dim]
-		
+
 		prediction = self.fc_out(output.squeeze(0))
-		
+
 		#prediction = [batch size, output dim]
-		
+
 		return prediction, hidden, cell
 
 class Seq2Seq(nn.Module):
 	def __init__(self, encoder, decoder, device):
 		super().__init__()
-		
+
 		self.encoder = encoder
 		self.decoder = decoder
 		self.device = device
-		
+
 		assert encoder.hid_dim == decoder.hid_dim, \
 			"Hidden dimensions of encoder and decoder must be equal!"
 		assert encoder.n_layers == decoder.n_layers, \
 			"Encoder and decoder must have equal number of layers!"
-		
+
 	def forward(self, src, trg, src_len, teacher_forcing_ratio = 0.5):
-		
+
 		#src = [batch size, src len]
 		#trg = [batch size, trg len]
 		#teacher_forcing_ratio is probability to use teacher forcing
@@ -157,37 +157,37 @@ class Seq2Seq(nn.Module):
 		batch_size = trg.shape[0]
 		trg_len = trg.shape[1]
 		trg_vocab_size = self.decoder.output_dim
-		
+
 		#tensor to store decoder outputs
 		outputs = torch.zeros(batch_size, trg_len, trg_vocab_size).to(self.device)
 		# print(outputs.shape)
 		#last hidden state of the encoder is used as the initial hidden state of the decoder
 		hidden, cell = self.encoder(src, src_len)
-		
+
 		#first input to the decoder is the <sos> tokens
 		input = trg[:,0]
 		# print(input.shape)
-		
+
 		for t in range(0, trg_len):
-			
+
 			#insert input token embedding, previous hidden and previous cell states
 			#receive output tensor (predictions) and new hidden and cell states
-			
+
 			output, hidden, cell = self.decoder(input, hidden, cell)
-			
+
 			#place predictions in a tensor holding predictions for each token
 			outputs[:,t] = output
-			
+
 			#decide if we are going to use teacher forcing or not
 			teacher_force = random.random() < teacher_forcing_ratio
-			
+
 			#get the highest predicted token from our predictions
-			top1 = output.argmax(1) 
-			
+			top1 = output.argmax(1)
+
 			#if teacher forcing, use actual next token as next input
 			#if not, use predicted token
 			input = trg[:,t] if teacher_force else top1
-		
+
 		return outputs
 
 def init_weights(m):
@@ -204,7 +204,7 @@ def get_lines():
 	id2line_vi = {}
 	id2line_test_en = {}
 	id2line_test_vi = {}
-	dicts = [id2line_en, id2line_vi, id2line_test_en, id2line_test_vi]	
+	dicts = [id2line_en, id2line_vi, id2line_test_en, id2line_test_vi]
 	paths = [EN_TRAIN_PATH, VI_TRAIN_PATH, EN_TEST_PATH, VI_TEST_PATH]
 
 	for ii, path in enumerate(paths): # go through all paths in this case english train and viet train
@@ -232,7 +232,7 @@ def line_id2token(line,vocab):
 	tmp = []
 	for i in line:
 		tmp.append(vocab[i])
-	return tmp	
+	return tmp
 
 def token2id(batch, vocab):
 	# print(batch)
@@ -442,7 +442,7 @@ def train():
 	print(max(enc_sent_len))
 	train_loader = torch.utils.data.DataLoader(train_dataset, batch_size = BATCH_SIZE, shuffle=False, drop_last = True)
 
-	
+
 	# enc_sample, dec_sample = data_iter.next()
 
 	# out = model(enc_sample.to(DEVICE), dec_sample.to(DEVICE))
@@ -451,7 +451,7 @@ def train():
 	model.apply(init_weights)
 	optimizer = optim.Adam(model.parameters(), 0.0005)
 	criterion = nn.CrossEntropyLoss(ignore_index=0)
-	
+
 
 	for epoch in range(N_EPOCHS):
 		data_iter = iter(train_loader)
@@ -471,7 +471,7 @@ def train():
 def evaluate_step(model,iterator,criterion):
 	model.eval()
 	average_bleu = 0
-	smoothing = SmoothingFunction()
+	smoothing = SmoothingFunction(epsilon = 0.1, alpha=5, k=5)
 
 	with torch.no_grad():
 		for i, (enc,dec, src_len, trg_len) in enumerate(iterator):
@@ -489,14 +489,14 @@ def evaluate_step(model,iterator,criterion):
 
 			# loss = criterion(output,trg)
 			# epoch_loss += loss.item()
-			bleu = corpus_bleu(dec, output, weights, smoothing_function=smoothing.method1(), auto_reweigh=False)
-			
+			bleu = corpus_bleu(dec, output, smoothing_function=smoothing.method1, auto_reweigh=False)
+
 			average_bleu += bleu
 			# print("Batch: {}/{}, Loss:{}".format(i,len(data_iter), loss.item()))
 	return average_bleu/len(iterator)*100
 
 def test():
-	enc_data, dec_data, len_enc_voc, len_dec_voc = dataLoader("test")	
+	enc_data, dec_data, len_enc_voc, len_dec_voc, enc_sent_len, dec_sent_len = dataLoader("test")
 	INPUT_DIM = len_enc_voc
 	OUTPUT_DIM = len_dec_voc
 	ENC_EMB_DIM = 256
@@ -516,12 +516,12 @@ def test():
 
 	enc_tens = torch.tensor(enc_data, dtype = torch.int64).to(DEVICE)
 	dec_tens = torch.tensor(dec_data, dtype = torch.int64).to(DEVICE)
-	test_dataset = MyData(enc_tens, dec_tens)
+	test_dataset = MyData(enc_tens, dec_tens, enc_sent_len, dec_sent_len)
 
 	test_loader = torch.utils.data.DataLoader(test_dataset, batch_size = BATCH_SIZE, shuffle=False, drop_last = True)
 	data_iter = iter(test_loader)
-	criterion = nn.CrossEntropyLoss(ignroe_index = 0)
-	
+	criterion = nn.CrossEntropyLoss(ignore_index = 0)
+
 	test_loss = evaluate_step(model, data_iter, criterion)
 
 	print("Test Loss: {}".format(test_loss))
