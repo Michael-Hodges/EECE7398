@@ -487,10 +487,40 @@ def train():
 		end_time = time.time()
 		epoch_min, epoch_seconds = epoch_time(start_time, end_time)
 		print("Epoch: {} | Time: {}m {}s".format(epoch, start_time, end_time))
-		print("Train Loss: {}".format(epoch_loss))
+		print("Train Loss: {}".format(train_loss))
 
 	print("Training Terminated. Saving model...")
 	torch.save(model.state_dict(), './model/nmt.pt')
+
+
+def evaluate_step(model,iterator,criterion):
+	model.eval()
+	epoch_loss = 0
+
+	with torch.no_grad():
+		for i, (enc,dec, src_len, trg_len) in enumerate(iterator):
+			src = enc
+			trg = dec
+
+			output = model(src,trg, src_len, 0)
+
+			# print("shape from model: {}".format(output.shape))
+			# trg = [batch size, trg len]
+			# output = [batch, trg len, output dim]
+
+			output_dim  = output.shape[-1]
+			# print("output dimension: {}".format(output_dim))
+			output = output[1:].view(-1, output_dim)
+			trg = trg[1:].view(-1)
+			# print("output shape: {}".format(output.shape)) #[5670, 7710]
+			# print("target shape:{}".format(trg.shape))	   # [5670]
+
+			loss = criterion(output,trg)
+
+			epoch_loss += loss.item()
+
+			print("Batch: {}/{}, Loss:{}".format(i,len(data_iter), loss.item()))
+	return epoch_loss/len(iterator)
 
 def test():
 	enc_data, dec_data, len_enc_voc, len_dec_voc = dataLoader("test")	
@@ -517,27 +547,11 @@ def test():
 
 	test_loader = torch.utils.data.DataLoader(test_dataset, batch_size = BATCH_SIZE, shuffle=False, drop_last = True)
 	data_iter = iter(test_loader)
-	criterion = nn.CrossEntropyLoss()
-	model.eval()
+	criterion = nn.CrossEntropyLoss(ignroe_index = 0)
+	
+	test_loss = evaluate_step(model, data_iter, criterion)
 
-	epoch_loss = 0
-
-	with torch.no_grad():
-		for i, (enc,dec) in enumerate(test_loader):
-
-			src = enc
-			trg = dec
-
-			output = model(src, trg, 0)
-
-			output_dim  = output.shape[-1]
-			output = output[1:].view(-1, output_dim)
-			trg = trg[1:].view(-1)
-
-			loss = criterion(output, trg)
-
-			epoch_loss +=loss.item()
-	print("Epoch Loss: {}".format(epoch_loss/len(test_loader)))
+	print("Test Loss: {}".format(test_loss))
 
 def translate():
 	print("In Translation Mode. Press ctl+c to exit...")
