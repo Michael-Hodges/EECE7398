@@ -564,6 +564,11 @@ def pad(sentence, max_len):
 	sentence.extend([0 for i in range(num_pads)])
 	return sentence
 
+def depad(sentence):
+	stopwords = ['<s>','<pad>','<unk>']
+	return [word for word in sentence if word not in stopwords]
+
+
 def translate():
 	print("In Translation Mode. Press ctl+c to exit...")
 	enc_data, dec_data, len_enc_voc, len_dec_voc, enc_sent_len, dec_sent_len, en_words, en_indx, vi_words, vi_indx = dataLoader("test")
@@ -591,7 +596,7 @@ def translate():
 		sent_id, sent_len = line_token2id(to_translate,en_indx)
 		padded_sent = pad(sent_id, 70)
 		translate_indx = translate_one(sent_id,sent_len, en_indx, vi_indx, model, max_len=90)
-		translated_tokens = line_id2token(translate_indx, vi_words)
+		translated_tokens = depad(line_id2token(translate_indx, vi_words))
 		print(" ".join(translated_tokens))
 
 def main():
