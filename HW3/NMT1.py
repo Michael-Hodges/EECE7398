@@ -11,7 +11,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 
-from nltk.tranlate import bleu_score
+from nltk.tranlate.bleu_score import corpus_bleu, Smoothing_function
 
 import torchtext
 from torchtext.data import BucketIterator, Field
@@ -471,6 +471,7 @@ def train():
 def evaluate_step(model,iterator,criterion):
 	model.eval()
 	average_bleu = 0
+	smoothing = SmoothingFunction()
 
 	with torch.no_grad():
 		for i, (enc,dec, src_len, trg_len) in enumerate(iterator):
@@ -479,23 +480,20 @@ def evaluate_step(model,iterator,criterion):
 
 			output = model(src,trg, src_len, 0)
 			print(output[0])
-			# print("shape from model: {}".format(output.shape))
-			# trg = [batch size, trg len]
-			# output = [batch, trg len, output dim]
 
 			output_dim  = output.shape[-1]
-			# print("output dimension: {}".format(output_dim))
 			output = output[1:].view(-1, output_dim)
 			trg = trg[1:].view(-1)
 			# print("output shape: {}".format(output.shape)) #[5670, 7710]
 			# print("target shape:{}".format(trg.shape))	   # [5670]
 
-			loss = criterion(output,trg)
-
-			epoch_loss += loss.item()
-
+			# loss = criterion(output,trg)
+			# epoch_loss += loss.item()
+			bleu = corpus_bleu(dec, output, weights, smoothing_function=smoothing.method1(), auto_reweigh=False)
+			
+			average_bleu += bleu
 			# print("Batch: {}/{}, Loss:{}".format(i,len(data_iter), loss.item()))
-	return average_bleu
+	return average_bleu/len(iterator)*100
 
 def test():
 	enc_data, dec_data, len_enc_voc, len_dec_voc = dataLoader("test")	
