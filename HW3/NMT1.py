@@ -69,7 +69,8 @@ class Encoder(nn.Module):
 	def forward(self, src, src_len):
 
 		#src = [batch size, src len]
-		# print(src.shape)
+		print("source shape: {}".format(src.shape))
+		print("source len shape: {}".format(src_len.shape))
 		embedded = self.dropout(self.embedding(src))
 		# print(embedded.shape)
 		#embedded = [batch size, src len, emb dim]
@@ -162,7 +163,7 @@ class Seq2Seq(nn.Module):
 		outputs = torch.zeros(batch_size, trg_len, trg_vocab_size).to(self.device)
 		# print(outputs.shape)
 		#last hidden state of the encoder is used as the initial hidden state of the decoder
-		hidden, cell = self.encoder(src, src_len)
+		hidden, cell, _ = self.encoder(src, src_len)
 
 		#first input to the decoder is the <sos> tokens
 		input = trg[:,0]
@@ -216,16 +217,21 @@ def get_lines():
 				dicts[ii][jj] = parts # store each sentence in the appropriate dictionary dicts[dict choice][line number]
 	return id2line_en, id2line_vi, id2line_test_en, id2line_test_vi
 
+def sent_2id(sentence):
+	print(sentence)
+
+
 def line_token2id(line,vocab):
 	# takes a list of tokens and converts it to a list of ids using vocab
 	id_line = []
 	for i in line:
+		# print(i)
 		tmp = vocab.get(i)
 		if tmp == None:
 			id_line.append(vocab.get('<unk>'))
 		else:
 			id_line.append(tmp)
-	return id_line
+	return id_line, len(id_line)
 
 def line_id2token(line,vocab):
 	# takes a list of ids and convert it to token form
@@ -363,14 +369,13 @@ def dataLoader(trn_tst):
 	if trn_tst == "test":
 		en_identified, max_en, en_len = token2id(en_test, en_indx)
 		vi_identified, max_vi, vi_len = token2id(vi_test, vi_indx)
-	print(len(en_identified))
 	# tokenized = id2token(identified, words)
 	assert len(en_identified) == len(vi_identified), "Translation data not the same length"
 	# data_buckets = load_data(en_identified, vi_identified)
 	enc_data, dec_data, en_len, vi_len = load_data_nb(en_identified, vi_identified, en_len, vi_len)
 	# bucket_scale = _get_buckets(data_buckets)
 	print("Loading Model...")
-	return enc_data, dec_data, len(en_words), len(vi_words), en_len, vi_len
+	return enc_data, dec_data, len(en_words), len(vi_words), en_len, vi_len, en_words, en_indx, vi_words, vi_indx
 	# torchtext.data.Dataset(en_identified, vi_identified, )
 	# torchtext.data.Example.fromlist((en_identified[0], vi_identified[0]), (SRC, TRG))
 	# for ii, sample in enumerate(train_iterator):
@@ -419,7 +424,7 @@ def epoch_time(start_time, end_time):
 
 def train():
 	# data_bucket, bucket_scale, len_enc_voc, len_dec_voc = dataLoader()
-	enc_data, dec_data, len_enc_voc, len_dec_voc, enc_sent_len, dec_sent_len = dataLoader("train")
+	enc_data, dec_data, len_enc_voc, len_dec_voc, enc_sent_len, dec_sent_len, _, _, _, _ = dataLoader("train")
 	INPUT_DIM = len_enc_voc
 	OUTPUT_DIM = len_dec_voc
 	ENC_EMB_DIM = 256
@@ -496,7 +501,7 @@ def evaluate_step(model,iterator,criterion):
 	return average_bleu/len(iterator)*100
 
 def test():
-	enc_data, dec_data, len_enc_voc, len_dec_voc, enc_sent_len, dec_sent_len = dataLoader("test")
+	enc_data, dec_data, len_enc_voc, len_dec_voc, enc_sent_len, dec_sent_len, _, _, _, _  = dataLoader("test")
 	INPUT_DIM = len_enc_voc
 	OUTPUT_DIM = len_dec_voc
 	ENC_EMB_DIM = 256
@@ -526,9 +531,42 @@ def test():
 
 	print("Test Loss: {}".format(test_loss))
 
+def translate_one(sentence, s_len, eng_idx, viet_idx, model, max_len = 90):
+	model.eval()
+
+	src_tens = torch.LongTensor(sentence).to(DEVICE)
+	src_len = torch.LongTensor([s_len]).to(DEVICE)
+	src_tens = src_tens.unsqueeze(0)
+	with torch.no_grad():
+		hidden, cell = model.encoder(src_tens, src_len)
+	trg = torch.zeros(src_tens.shape[0], max_len, dtype=torch.long).to(DEVICE)
+	trg[:,0] = viet_idx['<s>']
+	print("trg.shape: {}".format(trg.shape))
+	print("trg: {}".format(trg))
+	for i in range(max_len):
+		with torch.no_grad():
+			prediction, hidden, cell = model.decoder(trg[:,i], hidden, cell)
+			prediction = prediction.argmax(1).item()
+			print(prediction)
+			if prediction == viet_idx['</s>']:
+				break
+			try:
+				trg[:,i+1] = prediction
+			except:
+				print("Did not reach </s> token before reaching out of index: {} must be < {}".format(i+1, max_len))
+	# print(trg)
+	return trg
+
+def pad(sentence, max_len):
+	if len(sentence) == max_len:
+		return sentence
+	num_pads = max_len-len(sentence)
+	sentence.extend([0 for i in range(num_pads)])
+	return sentence
+
 def translate():
 	print("In Translation Mode. Press ctl+c to exit...")
-	print("Loading Model...")
+	enc_data, dec_data, len_enc_voc, len_dec_voc, enc_sent_len, dec_sent_len, en_words, en_indx, vi_words, vi_indx = dataLoader("test")
 	INPUT_DIM = len_enc_voc
 	OUTPUT_DIM = len_dec_voc
 	ENC_EMB_DIM = 256
@@ -539,13 +577,20 @@ def translate():
 	DEC_DROPOUT = 0.5
 	CLIP = 1
 	N_EPOCHS = 10
+
 	enc = Encoder(INPUT_DIM, ENC_EMB_DIM, HID_DIM, N_LAYERS, ENC_DROPOUT)
 	dec = Decoder(OUTPUT_DIM, DEC_EMB_DIM, HID_DIM, N_LAYERS, DEC_DROPOUT)
 	model = Seq2Seq(enc, dec, DEVICE).to(DEVICE)
-
-	model.load_state_dict(torch.load('./model/nmt.pt'))
-	while(1):
-		to_translate = input(">")
+	
+	# model.load_state_dict(torch.load('./model/nmt.pt'))
+	# while(1):
+	# 	to_translate = input(">")
+	to_translate = "hello who are you"
+	to_translate = "<s> "+to_translate+" </s>"
+	to_translate = to_translate.split()
+	sent_id, sent_len = line_token2id(to_translate,en_indx)
+	padded_sent = pad(sent_id, 70)
+	translate_one(sent_id,sent_len, en_indx, vi_indx, model, max_len=90)
 
 def main():
 	parser = argparse.ArgumentParser()
