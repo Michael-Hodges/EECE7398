@@ -217,9 +217,6 @@ def get_lines():
 				dicts[ii][jj] = parts # store each sentence in the appropriate dictionary dicts[dict choice][line number]
 	return id2line_en, id2line_vi, id2line_test_en, id2line_test_vi
 
-def sent_2id(sentence):
-	print(sentence)
-
 
 def line_token2id(line,vocab):
 	# takes a list of tokens and converts it to a list of ids using vocab
@@ -487,8 +484,8 @@ def evaluate_step(model,iterator,criterion, viet_words):
 			output = output.argmax(dim=2)
 
 			# print(output[0])
-			print("model output shape: {}".format(output.shape))
-			print("target shape: {}".format(trg.shape))
+			# print("model output shape: {}".format(output.shape))
+			# print("target shape: {}".format(trg.shape))
 
 			word_output = [[] for k in src_len]
 			batch_output = output.tolist()
