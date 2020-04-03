@@ -163,7 +163,7 @@ class Seq2Seq(nn.Module):
 		outputs = torch.zeros(batch_size, trg_len, trg_vocab_size).to(self.device)
 		# print(outputs.shape)
 		#last hidden state of the encoder is used as the initial hidden state of the decoder
-		hidden, cell, _ = self.encoder(src, src_len)
+		hidden, cell = self.encoder(src, src_len)
 
 		#first input to the decoder is the <sos> tokens
 		input = trg[:,0]
@@ -473,7 +473,7 @@ def train():
 	torch.save(model.state_dict(), './model/nmt.pt')
 
 
-def evaluate_step(model,iterator,criterion):
+def evaluate_step(model,iterator,criterion, viet_words):
 	model.eval()
 	average_bleu = 0
 	smoothing = SmoothingFunction(epsilon = 0.1, alpha=5, k=5)
@@ -484,24 +484,29 @@ def evaluate_step(model,iterator,criterion):
 			trg = dec
 
 			output = model(src,trg, src_len, 0)
-			print(output[0])
+			output = output.argmax(dim=2)
 
-			output_dim  = output.shape[-1]
-			output = output[1:].view(-1, output_dim)
-			trg = trg[1:].view(-1)
-			# print("output shape: {}".format(output.shape)) #[5670, 7710]
-			# print("target shape:{}".format(trg.shape))	   # [5670]
+			# print(output[0])
+			print("model output shape: {}".format(output.shape))
+			print("target shape: {}".format(trg.shape))
 
+			word_output = [[] for k in src_len]
+			batch_output = output.tolist()
+			correct_output = trg.tolist()
+			for ii, (j, jj) in enumerate(zip(batch_output, correct_output)):
+				word_output[ii] = depad(line_id2token(j, viet_words))
+				correct_output[ii] = depad(line_id2token(jj, viet_words))
+			# print(correct_output)
+			# print(word_output)
 			# loss = criterion(output,trg)
 			# epoch_loss += loss.item()
-			bleu = corpus_bleu(dec, output, smoothing_function=smoothing.method1, auto_reweigh=False)
+			average_bleu += corpus_bleu(correct_output, word_output, smoothing_function=smoothing.method1, auto_reweigh=False)
 
-			average_bleu += bleu
 			# print("Batch: {}/{}, Loss:{}".format(i,len(data_iter), loss.item()))
 	return average_bleu/len(iterator)*100
 
 def test():
-	enc_data, dec_data, len_enc_voc, len_dec_voc, enc_sent_len, dec_sent_len, _, _, _, _  = dataLoader("test")
+	enc_data, dec_data, len_enc_voc, len_dec_voc, enc_sent_len, dec_sent_len, en_words, en_indx, vi_words, vi_indx  = dataLoader("test")
 	INPUT_DIM = len_enc_voc
 	OUTPUT_DIM = len_dec_voc
 	ENC_EMB_DIM = 256
@@ -517,7 +522,7 @@ def test():
 	dec = Decoder(OUTPUT_DIM, DEC_EMB_DIM, HID_DIM, N_LAYERS, DEC_DROPOUT)
 	model = Seq2Seq(enc, dec, DEVICE).to(DEVICE)
 
-	model.load_state_dict(torch.load('./model/nmt.pt'))
+	# model.load_state_dict(torch.load('./model/nmt.pt'))
 
 	enc_tens = torch.tensor(enc_data, dtype = torch.int64).to(DEVICE)
 	dec_tens = torch.tensor(dec_data, dtype = torch.int64).to(DEVICE)
@@ -527,9 +532,9 @@ def test():
 	data_iter = iter(test_loader)
 	criterion = nn.CrossEntropyLoss(ignore_index = 0)
 
-	test_loss = evaluate_step(model, data_iter, criterion)
+	bleu_score = evaluate_step(model, data_iter, criterion, vi_words)
 
-	print("Test Loss: {}".format(test_loss))
+	print("Average BELU: {}".format(bleu_score))
 
 def translate_one(sentence, s_len, eng_idx, viet_idx, model, max_len = 90):
 	model.eval()
@@ -565,7 +570,7 @@ def pad(sentence, max_len):
 	return sentence
 
 def depad(sentence):
-	stopwords = ['<s>','<pad>','<unk>']
+	stopwords = ['<s>','<pad>','<unk>','</s>']
 	return [word for word in sentence if word not in stopwords]
 
 
