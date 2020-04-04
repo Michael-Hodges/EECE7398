@@ -496,7 +496,7 @@ def train():
 		valid_iter = iter(valid_loader)
 		start_time = time.time()
 		train_loss = train_step(model, data_iter, optimizer, criterion, CLIP)
-		valid_loss = eval_train(model, eval_iter, criterion)
+		valid_loss = eval_train(model, valid_iter, criterion)
 		# for i, (enc,dec, src_len, trg_len) in enumerate(data_iter):
 		if valid_loss < best_valid_loss:
 			best_valid_loss = valid_loss
