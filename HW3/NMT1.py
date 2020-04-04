@@ -28,12 +28,21 @@ VI_TRAIN_PATH = './E_V/train.vi'
 EN_TEST_PATH = './E_V/tst2012.en' #'./E_V/tst2013.en'
 VI_TEST_PATH  = './E_V/tst2012.vi' #'./E_V/tst2013.vi'
 
-BATCH_SIZE = 64
+BATCH_SIZE = 128
 
 BUCKETS = [(10,10), (14,14), (18,18), (24,24), (33,33), (70,90)]
 
 ENG_MAX_LEN = 70
 VI_MAX_LEN = 90
+
+ENC_EMB_DIM = 256
+DEC_EMB_DIM = 256
+HID_DIM = 512
+N_LAYERS = 2
+ENC_DROPOUT = 0.5
+DEC_DROPOUT = 0.5
+CLIP = 1
+N_EPOCHS = 10
 
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -65,6 +74,7 @@ class Encoder(nn.Module):
 		self.rnn = nn.LSTM(emb_dim, hid_dim, n_layers, batch_first=True, dropout = dropout)
 
 		self.dropout = nn.Dropout(dropout)
+
 
 	def forward(self, src, src_len):
 
@@ -106,6 +116,7 @@ class Decoder(nn.Module):
 		self.fc_out = nn.Linear(hid_dim, output_dim)
 
 		self.dropout = nn.Dropout(dropout)
+
 
 	def forward(self, input, hidden, cell):
 
@@ -409,7 +420,7 @@ def train_step(model, data_iter, optimizer, criterion, clip):
 
 		epoch_loss += loss.item()
 
-		print("Batch: {}/{}, Loss:{}".format(i,len(data_iter), loss.item()))
+		# print("Batch: {}/{}, Loss:{}".format(i,len(data_iter), loss.item()))
 
 	return epoch_loss/len(data_iter)
 
@@ -424,14 +435,6 @@ def train():
 	enc_data, dec_data, len_enc_voc, len_dec_voc, enc_sent_len, dec_sent_len, _, _, _, _ = dataLoader("train")
 	INPUT_DIM = len_enc_voc
 	OUTPUT_DIM = len_dec_voc
-	ENC_EMB_DIM = 256
-	DEC_EMB_DIM = 256
-	HID_DIM = 512
-	N_LAYERS = 2
-	ENC_DROPOUT = 0.5
-	DEC_DROPOUT = 0.5
-	CLIP = 1
-	N_EPOCHS = 10
 
 	enc = Encoder(INPUT_DIM, ENC_EMB_DIM, HID_DIM, N_LAYERS, ENC_DROPOUT)
 	dec = Decoder(OUTPUT_DIM, DEC_EMB_DIM, HID_DIM, N_LAYERS, DEC_DROPOUT)
@@ -441,7 +444,7 @@ def train():
 	enc_tens = torch.tensor(enc_data, dtype = torch.int64).to(DEVICE)
 	dec_tens = torch.tensor(dec_data, dtype = torch.int64).to(DEVICE)
 	train_dataset = MyData(enc_tens, dec_tens, enc_sent_len, dec_sent_len)
-	print(max(enc_sent_len))
+	# print(max(enc_sent_len))
 	train_loader = torch.utils.data.DataLoader(train_dataset, batch_size = BATCH_SIZE, shuffle=False, drop_last = True)
 
 
@@ -449,9 +452,8 @@ def train():
 
 	# out = model(enc_sample.to(DEVICE), dec_sample.to(DEVICE))
 
-
 	model.apply(init_weights)
-	optimizer = optim.Adam(model.parameters(), 0.0005)
+	optimizer = optim.Adam(model.parameters(), 0.001)
 	criterion = nn.CrossEntropyLoss(ignore_index=0)
 
 
@@ -463,11 +465,10 @@ def train():
 
 		end_time = time.time()
 		epoch_min, epoch_seconds = epoch_time(start_time, end_time)
-		print("Epoch: {} | Time: {}m {}s".format(epoch, start_time, end_time))
-		print("Train Loss: {}".format(train_loss))
+		print("Epoch: {} | Loss: {}".format(epoch, train_loss))
 
 	print("Training Terminated. Saving model...")
-	torch.save(model.state_dict(), './model/nmt.pt')
+	torch.save(model.state_dict(), './model/nmt_5.pt')
 
 
 def evaluate_step(model,iterator,criterion, viet_words):
@@ -506,20 +507,13 @@ def test():
 	enc_data, dec_data, len_enc_voc, len_dec_voc, enc_sent_len, dec_sent_len, en_words, en_indx, vi_words, vi_indx  = dataLoader("test")
 	INPUT_DIM = len_enc_voc
 	OUTPUT_DIM = len_dec_voc
-	ENC_EMB_DIM = 256
-	DEC_EMB_DIM = 256
-	HID_DIM = 512
-	N_LAYERS = 2
-	ENC_DROPOUT = 0.5
-	DEC_DROPOUT = 0.5
-	CLIP = 1
-	N_EPOCHS = 10
+
 
 	enc = Encoder(INPUT_DIM, ENC_EMB_DIM, HID_DIM, N_LAYERS, ENC_DROPOUT)
 	dec = Decoder(OUTPUT_DIM, DEC_EMB_DIM, HID_DIM, N_LAYERS, DEC_DROPOUT)
 	model = Seq2Seq(enc, dec, DEVICE).to(DEVICE)
 
-	model.load_state_dict(torch.load('./model/nmt.pt'))
+	model.load_state_dict(torch.load('./model/nmt_5.pt'))
 
 	enc_tens = torch.tensor(enc_data, dtype = torch.int64).to(DEVICE)
 	dec_tens = torch.tensor(dec_data, dtype = torch.int64).to(DEVICE)
@@ -572,24 +566,19 @@ def depad(sentence):
 
 
 def translate():
-	print("In Translation Mode. Press ctl+c to exit...")
-	enc_data, dec_data, len_enc_voc, len_dec_voc, enc_sent_len, dec_sent_len, en_words, en_indx, vi_words, vi_indx = dataLoader("test")
-	INPUT_DIM = len_enc_voc
-	OUTPUT_DIM = len_dec_voc
-	ENC_EMB_DIM = 256
-	DEC_EMB_DIM = 256
-	HID_DIM = 512
-	N_LAYERS = 2
-	ENC_DROPOUT = 0.5
-	DEC_DROPOUT = 0.5
-	CLIP = 1
-	N_EPOCHS = 10
+	# enc_data, dec_data, len_enc_voc, len_dec_voc, enc_sent_len, dec_sent_len, en_words, en_indx, vi_words, vi_indx = dataLoader("test")
+	en_words, en_indx = load_vocab('./E_V/vocab.en')
+	vi_words, vi_indx = load_vocab('./E_V/vocab.vi')
+	INPUT_DIM = len(en_indx)
+	OUTPUT_DIM = len(vi_indx)
 
+	print("Loading Model...")
 	enc = Encoder(INPUT_DIM, ENC_EMB_DIM, HID_DIM, N_LAYERS, ENC_DROPOUT)
 	dec = Decoder(OUTPUT_DIM, DEC_EMB_DIM, HID_DIM, N_LAYERS, DEC_DROPOUT)
 	model = Seq2Seq(enc, dec, DEVICE).to(DEVICE)
 
-	model.load_state_dict(torch.load('./model/nmt.pt'))
+	model.load_state_dict(torch.load('./model/nmt_5.pt'))
+	print("In Translation Mode. Press ctl+c to exit...")
 	while(1):
 		to_translate = input(">")
 	# to_translate = "And these are the questions that we have to worry about for the next 50 years ."
