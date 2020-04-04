@@ -27,6 +27,8 @@ EN_TRAIN_PATH = './E_V/train.en'
 VI_TRAIN_PATH = './E_V/train.vi'
 EN_TEST_PATH = './E_V/tst2012.en' #'./E_V/tst2013.en'
 VI_TEST_PATH  = './E_V/tst2012.vi' #'./E_V/tst2013.vi'
+EN_VALID_PATH = './E_V/tst2013.en'
+VI_VALID_PATH = './E_V/tst2013.vi'
 
 BATCH_SIZE = 128
 
@@ -216,8 +218,10 @@ def get_lines():
 	id2line_vi = {}
 	id2line_test_en = {}
 	id2line_test_vi = {}
-	dicts = [id2line_en, id2line_vi, id2line_test_en, id2line_test_vi]
-	paths = [EN_TRAIN_PATH, VI_TRAIN_PATH, EN_TEST_PATH, VI_TEST_PATH]
+	id2line_valid_en = {}
+	id2line_valid_vi = {}
+	dicts = [id2line_en, id2line_vi, id2line_test_en, id2line_test_vi, id2line_valid_en, id2line_valid_vi]
+	paths = [EN_TRAIN_PATH, VI_TRAIN_PATH, EN_TEST_PATH, VI_TEST_PATH, EN_VALID_PATH, VI_VALID_PATH]
 
 	for ii, path in enumerate(paths): # go through all paths in this case english train and viet train
 		with open(path, 'r') as f:
@@ -226,7 +230,7 @@ def get_lines():
 				line.split()
 				parts.extend(line.split() + ['</s>'])
 				dicts[ii][jj] = parts # store each sentence in the appropriate dictionary dicts[dict choice][line number]
-	return id2line_en, id2line_vi, id2line_test_en, id2line_test_vi
+	return id2line_en, id2line_vi, id2line_test_en, id2line_test_vi, id2line_valid_en, id2line_valid_vi
 
 
 def line_token2id(line,vocab):
@@ -366,17 +370,21 @@ def dataLoader(trn_tst):
 	vi_words, vi_indx = load_vocab('./E_V/vocab.vi')
 	# print(en_words[0:20])
 	# print(en_indx['<unk>'])
-	print("ENC_VOCAB: {}".format(len(en_words)))
-	print("DEC_VOCAB: {}".format(len(vi_words)))
+	# print("ENC_VOCAB: {}".format(len(en_words)))
+	# print("DEC_VOCAB: {}".format(len(vi_words)))
 	# print("Bucket: {}".format(BUCKETS))
 
-	en_train, vi_train, en_test, vi_test = get_lines()
+	en_train, vi_train, en_test, vi_test, en_valid, vi_valid = get_lines()
 	if trn_tst == "train":
 		en_identified, max_en, en_len = token2id(en_train, en_indx)
 		vi_identified, max_vi, vi_len = token2id(vi_train, vi_indx)
 	if trn_tst == "test":
 		en_identified, max_en, en_len = token2id(en_test, en_indx)
 		vi_identified, max_vi, vi_len = token2id(vi_test, vi_indx)
+	if trn_tst == "train_eval":
+		en_identified, max_en, en_len = token2id(en_valid, en_indx)
+		vi_identified, max_vi, vi_len = token2id(vi_valid, vi_indx)
+
 	# tokenized = id2token(identified, words)
 	assert len(en_identified) == len(vi_identified), "Translation data not the same length"
 	# data_buckets = load_data(en_identified, vi_identified)
@@ -424,6 +432,30 @@ def train_step(model, data_iter, optimizer, criterion, clip):
 
 	return epoch_loss/len(data_iter)
 
+
+def eval_train(model, data_iter, criterion):
+	model.evaluate()
+	epoch_loss = 0
+	for i, (enc,dec, src_len, trg_len) in enumerate(data_iter):
+		src = enc
+		trg = dec
+
+		output = model(src,trg, src_len)
+		# print("shape from model: {}".format(output.shape))
+		# trg = [batch size, trg len]
+		# output = [batch, trg len, output dim]
+
+		output_dim  = output.shape[-1]
+		# print("output dimension: {}".format(output_dim))
+		output = output[1:].view(-1, output_dim)
+		trg = trg[1:].view(-1)
+		# print("output shape: {}".format(output.shape)) #[5670, 7710]
+		# print("target shape:{}".format(trg.shape))	   # [5670]
+
+		loss = criterion(output,trg)
+		epoch_loss += loss.item()
+	return epoch_loss/len(data_iter)
+
 def epoch_time(start_time, end_time):
 	elapsed_time = end_time - start_time
 	elapsed_mins = int(elapsed_time / 60)
@@ -433,6 +465,7 @@ def epoch_time(start_time, end_time):
 def train():
 	# data_bucket, bucket_scale, len_enc_voc, len_dec_voc = dataLoader()
 	enc_data, dec_data, len_enc_voc, len_dec_voc, enc_sent_len, dec_sent_len, _, _, _, _ = dataLoader("train")
+	enc_val_data, dec_val_data, _, _, enc_val_sent_len, dec_val_sent_len, _, _, _, _ = dataLoader("train_eval")
 	INPUT_DIM = len_enc_voc
 	OUTPUT_DIM = len_dec_voc
 
@@ -447,28 +480,33 @@ def train():
 	# print(max(enc_sent_len))
 	train_loader = torch.utils.data.DataLoader(train_dataset, batch_size = BATCH_SIZE, shuffle=False, drop_last = True)
 
-
-	# enc_sample, dec_sample = data_iter.next()
-
+	enc_val_tens = torch.tensor(enc_val_data, dtype = torch.int64).to(DEVICE)
+	dec_val_tens = torch.tensor(dec_val_data, dtype = torch.int64).to(DEVICE)
+	valid_dataset = MyData(enc_val_tens, dec_val_tens, enc_val_sent_len, dec_val_sent_len)
+	valid_loader = torch.utils.data.DataLoader(valid_dataset, batch_size = BATCH_SIZE, shuffle=False, drop_last = True)
 	# out = model(enc_sample.to(DEVICE), dec_sample.to(DEVICE))
 
 	model.apply(init_weights)
 	optimizer = optim.Adam(model.parameters(), 0.001)
 	criterion = nn.CrossEntropyLoss(ignore_index=0)
 
-
+	best_valid_loss = float('inf')
 	for epoch in range(N_EPOCHS):
 		data_iter = iter(train_loader)
+		valid_iter = iter(valid_loader)
 		start_time = time.time()
 		train_loss = train_step(model, data_iter, optimizer, criterion, CLIP)
+		valid_loss = eval_train(model, eval_iter, criterion)
 		# for i, (enc,dec, src_len, trg_len) in enumerate(data_iter):
-
+		if valid_loss < best_valid_loss:
+			best_valid_loss = valid_loss
+			torch.save(model.state_dict(), './model/nmt_5.pt')
 		end_time = time.time()
 		epoch_min, epoch_seconds = epoch_time(start_time, end_time)
-		print("Epoch: {} | Loss: {}".format(epoch, train_loss))
+		print("Epoch: {} | Train Loss: {}| Valid Loss: {}".format(epoch, train_loss, valid_loss))
 
 	print("Training Terminated. Saving model...")
-	torch.save(model.state_dict(), './model/nmt_5.pt')
+	# torch.save(model.state_dict(), './model/nmt_5.pt')
 
 
 def evaluate_step(model,iterator,criterion, viet_words):
