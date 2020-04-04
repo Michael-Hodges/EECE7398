@@ -42,7 +42,7 @@ N_LAYERS = 2
 ENC_DROPOUT = 0.5
 DEC_DROPOUT = 0.5
 CLIP = 1
-N_EPOCHS = 10
+N_EPOCHS = 20
 
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
