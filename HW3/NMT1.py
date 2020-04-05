@@ -10,6 +10,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
+import torch.nn.functional as F
 
 from nltk.translate.bleu_score import corpus_bleu, SmoothingFunction
 
@@ -37,14 +38,14 @@ BUCKETS = [(10,10), (14,14), (18,18), (24,24), (33,33), (70,90)]
 ENG_MAX_LEN = 70
 VI_MAX_LEN = 90
 
-ENC_EMB_DIM = 256
-DEC_EMB_DIM = 256
+ENC_EMB_DIM = 512
+DEC_EMB_DIM = 512
 HID_DIM = 512
 N_LAYERS = 2
 ENC_DROPOUT = 0.5
 DEC_DROPOUT = 0.5
 CLIP = 1
-N_EPOCHS = 20
+N_EPOCHS = 50
 
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -117,6 +118,8 @@ class Decoder(nn.Module):
 
 		self.fc_out = nn.Linear(hid_dim, output_dim)
 
+		# self.fc_out2 = nn.Linear(1024, output_dim)
+
 		self.dropout = nn.Dropout(dropout)
 
 
@@ -141,9 +144,8 @@ class Decoder(nn.Module):
 		#output = [1, batch size, hid dim]
 		#hidden = [n layers, batch size, hid dim]
 		#cell = [n layers, batch size, hid dim]
-
+		# prediction = F.relu(self.)
 		prediction = self.fc_out(output.squeeze(0))
-
 		#prediction = [batch size, output dim]
 
 		return prediction, hidden, cell
@@ -434,26 +436,27 @@ def train_step(model, data_iter, optimizer, criterion, clip):
 
 
 def eval_train(model, data_iter, criterion):
-	model.evaluate()
+	model.eval()
 	epoch_loss = 0
-	for i, (enc,dec, src_len, trg_len) in enumerate(data_iter):
-		src = enc
-		trg = dec
+	with torch.no_grad():
+		for i, (enc,dec, src_len, trg_len) in enumerate(data_iter):
+			src = enc
+			trg = dec
 
-		output = model(src,trg, src_len)
-		# print("shape from model: {}".format(output.shape))
-		# trg = [batch size, trg len]
-		# output = [batch, trg len, output dim]
+			output = model(src,trg, src_len)
+			# print("shape from model: {}".format(output.shape))
+			# trg = [batch size, trg len]
+			# output = [batch, trg len, output dim]
 
-		output_dim  = output.shape[-1]
-		# print("output dimension: {}".format(output_dim))
-		output = output[1:].view(-1, output_dim)
-		trg = trg[1:].view(-1)
-		# print("output shape: {}".format(output.shape)) #[5670, 7710]
-		# print("target shape:{}".format(trg.shape))	   # [5670]
+			output_dim  = output.shape[-1]
+			# print("output dimension: {}".format(output_dim))
+			output = output[1:].view(-1, output_dim)
+			trg = trg[1:].view(-1)
+			# print("output shape: {}".format(output.shape)) #[5670, 7710]
+			# print("target shape:{}".format(trg.shape))	   # [5670]
 
-		loss = criterion(output,trg)
-		epoch_loss += loss.item()
+			loss = criterion(output,trg)
+			epoch_loss += loss.item()
 	return epoch_loss/len(data_iter)
 
 def epoch_time(start_time, end_time):
@@ -464,7 +467,7 @@ def epoch_time(start_time, end_time):
 
 def train():
 	# data_bucket, bucket_scale, len_enc_voc, len_dec_voc = dataLoader()
-	enc_data, dec_data, len_enc_voc, len_dec_voc, enc_sent_len, dec_sent_len, _, _, _, _ = dataLoader("train")
+	enc_data, dec_data, len_enc_voc, len_dec_voc, enc_sent_len, dec_sent_len, _, _, vi_words, _ = dataLoader("train")
 	enc_val_data, dec_val_data, _, _, enc_val_sent_len, dec_val_sent_len, _, _, _, _ = dataLoader("train_eval")
 	INPUT_DIM = len_enc_voc
 	OUTPUT_DIM = len_dec_voc
@@ -491,19 +494,22 @@ def train():
 	criterion = nn.CrossEntropyLoss(ignore_index=0)
 
 	best_valid_loss = float('inf')
+	best_valid_BLEU = float(0)
 	for epoch in range(N_EPOCHS):
 		data_iter = iter(train_loader)
 		valid_iter = iter(valid_loader)
+		bleu_iter = iter(valid_loader)
 		start_time = time.time()
 		train_loss = train_step(model, data_iter, optimizer, criterion, CLIP)
 		valid_loss = eval_train(model, valid_iter, criterion)
+		bleu_score = evaluate_step(model, bleu_iter, criterion, vi_words)
 		# for i, (enc,dec, src_len, trg_len) in enumerate(data_iter):
-		if valid_loss < best_valid_loss:
-			best_valid_loss = valid_loss
+		if bleu_score > best_valid_BLEU:
+			best_valid_BLEU = bleu_score
 			torch.save(model.state_dict(), './model/nmt_5.pt')
 		end_time = time.time()
 		epoch_min, epoch_seconds = epoch_time(start_time, end_time)
-		print("Epoch: {} | Train Loss: {}| Valid Loss: {}".format(epoch, train_loss, valid_loss))
+		print("Epoch: {} | Train Loss: {}| Valid Loss: {} | BLEU: {}".format(epoch, train_loss, valid_loss, bleu_score))
 
 	print("Training Terminated. Saving model...")
 	# torch.save(model.state_dict(), './model/nmt_5.pt')
