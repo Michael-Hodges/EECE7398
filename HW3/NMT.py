@@ -683,7 +683,7 @@ def translate():
 	dec = Decoder(OUTPUT_DIM, DEC_EMB_DIM, HID_DIM, N_LAYERS, DEC_DROPOUT, attention)
 	model = Seq2Seq(enc, dec, 0, DEVICE).to(DEVICE)
 
-	# model.load_state_dict(torch.load('./model/nmt_5.pt'))
+	model.load_state_dict(torch.load('./model/nmt_5.pt'))
 	print("In Translation Mode. Press ctl+c to exit...")
 	while(1):
 		to_translate = input(">")
