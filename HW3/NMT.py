@@ -45,7 +45,7 @@ N_LAYERS = 1
 ENC_DROPOUT = 0.5
 DEC_DROPOUT = 0.5
 CLIP = 1
-N_EPOCHS = 20
+N_EPOCHS = 10
 SRC_PAD_IDX = 0
 
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -561,18 +561,22 @@ def train():
 	for epoch in range(N_EPOCHS):
 		data_iter = iter(train_loader)
 		valid_iter = iter(valid_loader)
-		bleu_iter = iter(valid_loader)
+		# bleu_iter = iter(valid_loader)
 		start_time = time.time()
 		train_loss = train_step(model, data_iter, optimizer, criterion, CLIP)
 		valid_loss = eval_train(model, valid_iter, criterion)
-		bleu_score = evaluate_step(model, bleu_iter, criterion, vi_words)
+		# bleu_score = evaluate_step(model, bleu_iter, criterion, vi_words)
 		# for i, (enc,dec, src_len, trg_len) in enumerate(data_iter):
-		if bleu_score > best_valid_BLEU:
-			best_valid_BLEU = bleu_score
+		if best_valid_loss > valid_loss:
+			best_valid_loss = valid_loss
 			torch.save(model.state_dict(), './model/nmt_6.pt')
+		# if bleu_score > best_valid_BLEU:
+		# 	best_valid_BLEU = bleu_score
+		# 	torch.save(model.state_dict(), './model/nmt_6.pt')
 		end_time = time.time()
 		epoch_min, epoch_seconds = epoch_time(start_time, end_time)
-		print("Epoch: {} | Train Loss: {}| Valid Loss: {} | BLEU: {}".format(epoch, train_loss, valid_loss, bleu_score))
+		# print("Epoch: {} | Train Loss: {}| Valid Loss: {} | BLEU: {}".format(epoch, train_loss, valid_loss, bleu_score))
+		print("Epoch: {} | Train Loss: {}| Valid Loss: {}".format(epoch, train_loss, valid_loss))
 
 	print("Training Terminated. Saving model...")
 	# torch.save(model.state_dict(), './model/nmt_5.pt')
@@ -597,7 +601,7 @@ def evaluate_step(model,iterator,criterion, viet_words):
 
 			word_output = [[] for k in src_len]
 			batch_output = output.tolist()
-			print(batch_output[0:5])
+			# print(batch_output[0:5])
 			correct_output = trg.tolist()
 			for ii, (j, jj) in enumerate(zip(batch_output, correct_output)):
 				word_output[ii] = depad(line_id2token(j, viet_words))

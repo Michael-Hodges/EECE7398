@@ -92,7 +92,8 @@ class Encoder(nn.Module):
 
 		outputs, (hidden, cell) = self.rnn(embedded_packed)
 
-		outputs, _ = nn.utils.rnn.pad_packed_sequence(outputs, batch_first=True, padding_value=0, total_length=70)
+		outputs, lengths = nn.utils.rnn.pad_packed_sequence(outputs, batch_first=True, padding_value=0, total_length=70)
+		# print(lengths)
 		# print(outputs.shape)
 		# print(hidden.shape)
 		# print(cell.shape)
