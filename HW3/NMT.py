@@ -236,7 +236,7 @@ class Seq2Seq(nn.Module):
 		# print(outputs.shape)
 		#last hidden state of the encoder is used as the initial hidden state of the decoder
 		hidden, encoder_outputs = self.encoder(src, src_len)
-		hidden, encoder_outputs = hidden.to(DEVICE), encoder_outputs.to(DEVICE)
+		# hidden, encoder_outputs = hidden.to(DEVICE), encoder_outputs.to(DEVICE)
 		#first input to the decoder is the <sos> tokens
 		input = trg[:,0]
 		# print(input.shape)
@@ -489,7 +489,7 @@ def train_step(model, data_iter, optimizer, criterion, clip):
 
 		epoch_loss += loss.item()
 
-		# print("Batch: {}/{}, Loss:{}".format(i,len(data_iter), loss.item()))
+		print("Batch: {}/{}, Loss:{}".format(i,len(data_iter), loss.item()))
 
 	return epoch_loss/len(data_iter)
 
@@ -497,24 +497,25 @@ def train_step(model, data_iter, optimizer, criterion, clip):
 def eval_train(model, data_iter, criterion):
 	model.eval()
 	epoch_loss = 0
-	for i, (enc,dec, src_len, trg_len) in enumerate(data_iter):
-		src = enc
-		trg = dec
+	with torch.no_grad():
+		for i, (enc,dec, src_len, trg_len) in enumerate(data_iter):
+			src = enc
+			trg = dec
 
-		output = model(src,trg, src_len, 0)
-		# print("shape from model: {}".format(output.shape))
-		# trg = [batch size, trg len]
-		# output = [batch, trg len, output dim]
+			output = model(src,trg, src_len, 0)
+			# print("shape from model: {}".format(output.shape))
+			# trg = [batch size, trg len]
+			# output = [batch, trg len, output dim]
 
-		output_dim  = output.shape[-1]
-		# print("output dimension: {}".format(output_dim))
-		output = output[1:].view(-1, output_dim)
-		trg = trg[1:].view(-1)
-		# print("output shape: {}".format(output.shape)) #[5670, 7710]
-		# print("target shape:{}".format(trg.shape))	   # [5670]
+			output_dim  = output.shape[-1]
+			# print("output dimension: {}".format(output_dim))
+			output = output[1:].view(-1, output_dim)
+			trg = trg[1:].view(-1)
+			# print("output shape: {}".format(output.shape)) #[5670, 7710]
+			# print("target shape:{}".format(trg.shape))	   # [5670]
 
-		loss = criterion(output,trg)
-		epoch_loss += loss.item()
+			loss = criterion(output,trg)
+			epoch_loss += loss.item()
 	return epoch_loss/len(data_iter)
 
 def epoch_time(start_time, end_time):
