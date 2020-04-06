@@ -70,10 +70,10 @@ class Encoder(nn.Module):
 	def forward(self, src, src_len):
 		# print("Enc_src: {}".format(src.shape))
 		#src = [batch size, src len]
-
+		
 		embedded = self.dropout(self.embedding(src))
 
-		# print("Enc_embedded: {}".format(embedded.shape))
+		# print("Enc_embedded: {}".format(embedded.shape))		
 		#embedded = [batch size, src len, emb dim]
 
 		embedded_packed = nn.utils.rnn.pack_padded_sequence(embedded, src_len, batch_first=True, enforce_sorted=False)
@@ -93,42 +93,42 @@ class Encoder(nn.Module):
 		return hidden, outputs
 
 class Attention(nn.Module):
-    def __init__(self, enc_hid_dim, dec_hid_dim):
-        super().__init__()
+	def __init__(self, enc_hid_dim, dec_hid_dim):
+		super().__init__()
+		
+		self.attn = nn.Linear((enc_hid_dim * 2) + dec_hid_dim, dec_hid_dim)
+		self.v = nn.Linear(dec_hid_dim, 1, bias = False)
+		
+	def forward(self, hidden, encoder_outputs, mask):
+		
+		#hidden = [batch size, dec hid dim]
+		#encoder_outputs = [src len, batch size, enc hid dim * 2]
+		encoder_outputs = encoder_outputs.permute(1, 0, 2)
+		# print("encoder_outputs: {}".format(encoder_outputs.shape))
+		# print("hidden shape: {}".format(hidden.shape))
+		batch_size = encoder_outputs.shape[1]
+		src_len = encoder_outputs.shape[0]
+		
+		#repeat decoder hidden state src_len times
+		hidden = hidden.unsqueeze(1).repeat(1, src_len, 1)
+  
+		encoder_outputs = encoder_outputs.permute(1, 0, 2)
+		
+		#hidden = [batch size, src len, dec hid dim]
+		#encoder_outputs = [batch size, src len, enc hid dim * 2]
+		# print("hidden: {}".format(hidden.shape))
+		# print("encoder again: {}".format(encoder_outputs.shape))
+		energy = torch.tanh(self.attn(torch.cat((hidden, encoder_outputs), dim = 2))) 
+		# print("energy: {}".format(energy.shape))
+		#energy = [batch size, src len, dec hid dim]
 
-        self.attn = nn.Linear((enc_hid_dim * 2) + dec_hid_dim, dec_hid_dim)
-        self.v = nn.Linear(dec_hid_dim, 1, bias = False)
-
-    def forward(self, hidden, encoder_outputs, mask):
-
-        #hidden = [batch size, dec hid dim]
-        #encoder_outputs = [src len, batch size, enc hid dim * 2]
-        encoder_outputs = encoder_outputs.permute(1, 0, 2)
-        # print("encoder_outputs: {}".format(encoder_outputs.shape))
-        # print("hidden shape: {}".format(hidden.shape))
-        batch_size = encoder_outputs.shape[1]
-        src_len = encoder_outputs.shape[0]
-
-        #repeat decoder hidden state src_len times
-        hidden = hidden.unsqueeze(1).repeat(1, src_len, 1)
-
-        encoder_outputs = encoder_outputs.permute(1, 0, 2)
-
-        #hidden = [batch size, src len, dec hid dim]
-        #encoder_outputs = [batch size, src len, enc hid dim * 2]
-        # print("hidden: {}".format(hidden.shape))
-        # print("encoder again: {}".format(encoder_outputs.shape))
-        energy = torch.tanh(self.attn(torch.cat((hidden, encoder_outputs), dim = 2)))
-        # print("energy: {}".format(energy.shape))
-        #energy = [batch size, src len, dec hid dim]
-
-        attention = self.v(energy).squeeze(2)
-        # print("attention: {}".format(attention.shape))
-        #attention = [batch size, src len]
-        # print(mask.shape)
-        attention = attention.masked_fill(mask == 0, -1e10)
-
-        return F.softmax(attention, dim = 1)
+		attention = self.v(energy).squeeze(2)
+		# print("attention: {}".format(attention.shape))
+		#attention = [batch size, src len]
+		# print(mask.shape)
+		attention = attention.masked_fill(mask == 0, -1e10)
+		
+		return F.softmax(attention, dim = 1)
 
 
 class Decoder(nn.Module):
@@ -151,11 +151,11 @@ class Decoder(nn.Module):
 
 	def forward(self, input, hidden, outputs, mask):
 
-        #input = [batch size]
-        #hidden = [batch size, dec hid dim]
-        #encoder_outputs = [src len, batch size, enc hid dim * 2]
-        #mask = [batch size, src len]
-
+		#input = [batch size]
+		#hidden = [batch size, dec hid dim]
+		#encoder_outputs = [src len, batch size, enc hid dim * 2]
+		#mask = [batch size, src len]
+		
 		input = input.unsqueeze(0)
 		# print("input unsqueeze: {}".format(input.shape))
 		#input = [1, batch size]
@@ -609,9 +609,10 @@ def test():
 	OUTPUT_DIM = len_dec_voc
 
 
+	attention = Attention(HID_DIM, HID_DIM)
 	enc = Encoder(INPUT_DIM, ENC_EMB_DIM, HID_DIM, N_LAYERS, ENC_DROPOUT)
-	dec = Decoder(OUTPUT_DIM, DEC_EMB_DIM, HID_DIM, N_LAYERS, DEC_DROPOUT)
-	model = Seq2Seq(enc, dec, DEVICE).to(DEVICE)
+	dec = Decoder(OUTPUT_DIM, DEC_EMB_DIM, HID_DIM, N_LAYERS, DEC_DROPOUT, attention)
+	model = Seq2Seq(enc, dec, 0, DEVICE).to(DEVICE)
 
 	model.load_state_dict(torch.load('./model/nmt_5.pt'))
 
@@ -634,14 +635,18 @@ def translate_one(sentence, s_len, eng_idx, viet_idx, model, max_len = 90):
 	src_len = torch.LongTensor([s_len]).to(DEVICE)
 	src_tens = src_tens.unsqueeze(0)
 	with torch.no_grad():
-		hidden, cell = model.encoder(src_tens, src_len)
+		hidden, enc_outputs = model.encoder(src_tens, src_len)
 	trg = torch.zeros(src_tens.shape[0], max_len, dtype=torch.long).to(DEVICE)
 	trg[:,0] = viet_idx['<s>']
+	def create_mask(src):
+		mask = (src != 0)
+		return mask
+	mask = create_mask(src_tens)
 	# print("trg.shape: {}".format(trg.shape))
 	# print("trg: {}".format(trg))
 	for i in range(max_len):
 		with torch.no_grad():
-			prediction, hidden, cell = model.decoder(trg[:,i], hidden, cell)
+			prediction, hidden, cell = model.decoder(trg[:,i], hidden, enc_outputs, mask)
 			prediction = prediction.argmax(1).item()
 			# print(prediction)
 			if prediction == viet_idx['</s>']:
@@ -673,11 +678,12 @@ def translate():
 	OUTPUT_DIM = len(vi_indx)
 
 	print("Loading Model...")
+	attention = Attention(HID_DIM, HID_DIM)
 	enc = Encoder(INPUT_DIM, ENC_EMB_DIM, HID_DIM, N_LAYERS, ENC_DROPOUT)
-	dec = Decoder(OUTPUT_DIM, DEC_EMB_DIM, HID_DIM, N_LAYERS, DEC_DROPOUT)
-	model = Seq2Seq(enc, dec, DEVICE).to(DEVICE)
+	dec = Decoder(OUTPUT_DIM, DEC_EMB_DIM, HID_DIM, N_LAYERS, DEC_DROPOUT, attention)
+	model = Seq2Seq(enc, dec, 0, DEVICE).to(DEVICE)
 
-	model.load_state_dict(torch.load('./model/nmt_5.pt'))
+	# model.load_state_dict(torch.load('./model/nmt_5.pt'))
 	print("In Translation Mode. Press ctl+c to exit...")
 	while(1):
 		to_translate = input(">")
