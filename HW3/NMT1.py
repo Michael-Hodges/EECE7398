@@ -443,7 +443,7 @@ def eval_train(model, data_iter, criterion):
 			src = enc
 			trg = dec
 
-			output = model(src,trg, src_len)
+			output = model(src,trg, src_len, 0)
 			# print("shape from model: {}".format(output.shape))
 			# trg = [batch size, trg len]
 			# output = [batch, trg len, output dim]
@@ -472,9 +472,10 @@ def train():
 	INPUT_DIM = len_enc_voc
 	OUTPUT_DIM = len_dec_voc
 
+
 	enc = Encoder(INPUT_DIM, ENC_EMB_DIM, HID_DIM, N_LAYERS, ENC_DROPOUT)
 	dec = Decoder(OUTPUT_DIM, DEC_EMB_DIM, HID_DIM, N_LAYERS, DEC_DROPOUT)
-	model = Seq2Seq(enc, dec, DEVICE).to(DEVICE)
+	model = Seq2Seq(enc, dec, 0, DEVICE).to(DEVICE)
 	# print(f'The model has {count_parameters(model):,} trainable parameters')
 
 	enc_tens = torch.tensor(enc_data, dtype = torch.int64).to(DEVICE)

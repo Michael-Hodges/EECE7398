@@ -70,10 +70,10 @@ class Encoder(nn.Module):
 	def forward(self, src, src_len):
 		# print("Enc_src: {}".format(src.shape))
 		#src = [batch size, src len]
-		
+
 		embedded = self.dropout(self.embedding(src))
 
-		# print("Enc_embedded: {}".format(embedded.shape))		
+		# print("Enc_embedded: {}".format(embedded.shape))
 		#embedded = [batch size, src len, emb dim]
 
 		embedded_packed = nn.utils.rnn.pack_padded_sequence(embedded, src_len, batch_first=True, enforce_sorted=False)
@@ -95,12 +95,12 @@ class Encoder(nn.Module):
 class Attention(nn.Module):
 	def __init__(self, enc_hid_dim, dec_hid_dim):
 		super().__init__()
-		
+
 		self.attn = nn.Linear((enc_hid_dim * 2) + dec_hid_dim, dec_hid_dim)
 		self.v = nn.Linear(dec_hid_dim, 1, bias = False)
-		
+
 	def forward(self, hidden, encoder_outputs, mask):
-		
+
 		#hidden = [batch size, dec hid dim]
 		#encoder_outputs = [src len, batch size, enc hid dim * 2]
 		encoder_outputs = encoder_outputs.permute(1, 0, 2)
@@ -108,17 +108,17 @@ class Attention(nn.Module):
 		# print("hidden shape: {}".format(hidden.shape))
 		batch_size = encoder_outputs.shape[1]
 		src_len = encoder_outputs.shape[0]
-		
+
 		#repeat decoder hidden state src_len times
 		hidden = hidden.unsqueeze(1).repeat(1, src_len, 1)
-  
+
 		encoder_outputs = encoder_outputs.permute(1, 0, 2)
-		
+
 		#hidden = [batch size, src len, dec hid dim]
 		#encoder_outputs = [batch size, src len, enc hid dim * 2]
 		# print("hidden: {}".format(hidden.shape))
 		# print("encoder again: {}".format(encoder_outputs.shape))
-		energy = torch.tanh(self.attn(torch.cat((hidden, encoder_outputs), dim = 2))) 
+		energy = torch.tanh(self.attn(torch.cat((hidden, encoder_outputs), dim = 2)))
 		# print("energy: {}".format(energy.shape))
 		#energy = [batch size, src len, dec hid dim]
 
@@ -127,7 +127,7 @@ class Attention(nn.Module):
 		#attention = [batch size, src len]
 		# print(mask.shape)
 		attention = attention.masked_fill(mask == 0, -1e10)
-		
+
 		return F.softmax(attention, dim = 1)
 
 
@@ -155,7 +155,7 @@ class Decoder(nn.Module):
 		#hidden = [batch size, dec hid dim]
 		#encoder_outputs = [src len, batch size, enc hid dim * 2]
 		#mask = [batch size, src len]
-		
+
 		input = input.unsqueeze(0)
 		# print("input unsqueeze: {}".format(input.shape))
 		#input = [1, batch size]
@@ -495,13 +495,13 @@ def train_step(model, data_iter, optimizer, criterion, clip):
 
 
 def eval_train(model, data_iter, criterion):
-	model.evaluate()
+	model.eval()
 	epoch_loss = 0
 	for i, (enc,dec, src_len, trg_len) in enumerate(data_iter):
 		src = enc
 		trg = dec
 
-		output = model(src,trg, src_len)
+		output = model(src,trg, src_len, 0)
 		# print("shape from model: {}".format(output.shape))
 		# trg = [batch size, trg len]
 		# output = [batch, trg len, output dim]
@@ -525,7 +525,7 @@ def epoch_time(start_time, end_time):
 
 def train():
 	# data_bucket, bucket_scale, len_enc_voc, len_dec_voc = dataLoader()
-	enc_data, dec_data, len_enc_voc, len_dec_voc, enc_sent_len, dec_sent_len, _, _, _, _ = dataLoader("train")
+	enc_data, dec_data, len_enc_voc, len_dec_voc, enc_sent_len, dec_sent_len, _, _, vi_words, _ = dataLoader("train")
 	enc_val_data, dec_val_data, _, _, enc_val_sent_len, dec_val_sent_len, _, _, _, _ = dataLoader("train_eval")
 	INPUT_DIM = len_enc_voc
 	OUTPUT_DIM = len_dec_voc
@@ -553,19 +553,22 @@ def train():
 	criterion = nn.CrossEntropyLoss(ignore_index=0)
 
 	best_valid_loss = float('inf')
+	best_valid_BLEU = float(0)
 	for epoch in range(N_EPOCHS):
 		data_iter = iter(train_loader)
 		valid_iter = iter(valid_loader)
+		bleu_iter = iter(valid_loader)
 		start_time = time.time()
 		train_loss = train_step(model, data_iter, optimizer, criterion, CLIP)
 		valid_loss = eval_train(model, valid_iter, criterion)
+		bleu_score = evaluate_step(model, bleu_iter, criterion, vi_words)
 		# for i, (enc,dec, src_len, trg_len) in enumerate(data_iter):
-		if valid_loss < best_valid_loss:
-			best_valid_loss = valid_loss
+		if bleu_score > best_valid_BLEU:
+			best_valid_BLEU = bleu_score
 			torch.save(model.state_dict(), './model/nmt_5.pt')
 		end_time = time.time()
 		epoch_min, epoch_seconds = epoch_time(start_time, end_time)
-		print("Epoch: {} | Train Loss: {}| Valid Loss: {}".format(epoch, train_loss, valid_loss))
+		print("Epoch: {} | Train Loss: {}| Valid Loss: {} | BLEU: {}".format(epoch, train_loss, valid_loss, bleu_score))
 
 	print("Training Terminated. Saving model...")
 	# torch.save(model.state_dict(), './model/nmt_5.pt')
