@@ -266,8 +266,11 @@ class Seq2Seq(nn.Module):
 		return outputs
 
 def init_weights(m):
-	for name, param in m.named_parameters():
-		nn.init.uniform_(param.data, -0.08, 0.08)
+    for name, param in m.named_parameters():
+        if 'weight' in name:
+            nn.init.normal_(param.data, mean=0, std=0.01)
+        else:
+            nn.init.constant_(param.data, 0)
 
 def count_parameters(model):
 	return sum(p.numel() for p in model.parameters() if p.requires_grad)
@@ -697,6 +700,7 @@ def translate():
 		sent_id, sent_len = line_token2id(to_translate,en_indx)
 		padded_sent = pad(sent_id, 70)
 		translate_indx = translate_one(sent_id,sent_len, en_indx, vi_indx, model, max_len=90)
+		# translated_tokens = line_id2token(translate_indx,vi_words)
 		translated_tokens = depad(line_id2token(translate_indx, vi_words))
 		print(" ".join(translated_tokens))
 
