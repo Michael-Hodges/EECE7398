@@ -236,7 +236,7 @@ class Seq2Seq(nn.Module):
 		# print(outputs.shape)
 		#last hidden state of the encoder is used as the initial hidden state of the decoder
 		hidden, encoder_outputs = self.encoder(src, src_len)
-
+		hidden, encoder_outputs = hidden.to(DEVICE), encoder_outputs.to(DEVICE)
 		#first input to the decoder is the <sos> tokens
 		input = trg[:,0]
 		# print(input.shape)
