@@ -642,7 +642,6 @@ def main():
 
 	if args.input == "train":
 		train()
-
 	if args.input == "test":
 		test()
 	if args.input == "translate":
