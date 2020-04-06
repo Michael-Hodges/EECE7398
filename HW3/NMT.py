@@ -569,7 +569,7 @@ def train():
 		# for i, (enc,dec, src_len, trg_len) in enumerate(data_iter):
 		if bleu_score > best_valid_BLEU:
 			best_valid_BLEU = bleu_score
-			torch.save(model.state_dict(), './model/nmt_5.pt')
+			torch.save(model.state_dict(), './model/nmt_6.pt')
 		end_time = time.time()
 		epoch_min, epoch_seconds = epoch_time(start_time, end_time)
 		print("Epoch: {} | Train Loss: {}| Valid Loss: {} | BLEU: {}".format(epoch, train_loss, valid_loss, bleu_score))
@@ -622,7 +622,7 @@ def test():
 	dec = Decoder(OUTPUT_DIM, DEC_EMB_DIM, HID_DIM, N_LAYERS, DEC_DROPOUT, attention)
 	model = Seq2Seq(enc, dec, 0, DEVICE).to(DEVICE)
 
-	model.load_state_dict(torch.load('./model/nmt_5.pt'))
+	model.load_state_dict(torch.load('./model/nmt_6.pt'))
 
 	enc_tens = torch.tensor(enc_data, dtype = torch.int64).to(DEVICE)
 	dec_tens = torch.tensor(dec_data, dtype = torch.int64).to(DEVICE)
@@ -691,7 +691,7 @@ def translate():
 	dec = Decoder(OUTPUT_DIM, DEC_EMB_DIM, HID_DIM, N_LAYERS, DEC_DROPOUT, attention)
 	model = Seq2Seq(enc, dec, 0, DEVICE).to(DEVICE)
 
-	model.load_state_dict(torch.load('./model/nmt_5.pt'))
+	model.load_state_dict(torch.load('./model/nmt_6.pt'))
 	print("In Translation Mode. Press ctl+c to exit...")
 	while(1):
 		to_translate = input(">")
