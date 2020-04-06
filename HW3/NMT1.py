@@ -45,7 +45,7 @@ N_LAYERS = 2
 ENC_DROPOUT = 0.5
 DEC_DROPOUT = 0.5
 CLIP = 1
-N_EPOCHS = 50
+N_EPOCHS = 10
 
 DEVICE = torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
 
@@ -407,7 +407,7 @@ def train_step(model, data_iter, optimizer, criterion, clip):
 		trg = dec
 
 		optimizer.zero_grad()
-
+		# print(trg[0])
 		output = model(src,trg, src_len)
 		# print("shape from model: {}".format(output.shape))
 		# trg = [batch size, trg len]
@@ -536,7 +536,7 @@ def evaluate_step(model,iterator,criterion, viet_words):
 			word_output = [[] for k in src_len]
 			batch_output = output.tolist()
 			correct_output = trg.tolist()
-			print(batch_output[0:5])
+			# print(batch_output[0:5])
 			for ii, (j, jj) in enumerate(zip(batch_output, correct_output)):
 				word_output[ii] = depad(line_id2token(j, viet_words))
 				correct_output[ii] = depad(line_id2token(jj, viet_words))
