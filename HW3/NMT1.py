@@ -38,8 +38,8 @@ BUCKETS = [(10,10), (14,14), (18,18), (24,24), (33,33), (70,90)]
 ENG_MAX_LEN = 70
 VI_MAX_LEN = 90
 
-ENC_EMB_DIM = 512
-DEC_EMB_DIM = 512
+ENC_EMB_DIM = 256
+DEC_EMB_DIM = 256
 HID_DIM = 512
 N_LAYERS = 2
 ENC_DROPOUT = 0.5
@@ -47,7 +47,7 @@ DEC_DROPOUT = 0.5
 CLIP = 1
 N_EPOCHS = 50
 
-DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+DEVICE = torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
 
 # SRC = Field(
 # 			sequential=False, use_vocab=False, init_token=None, eos_token=None,
@@ -384,8 +384,8 @@ def dataLoader(trn_tst):
 		en_identified, max_en, en_len = token2id(en_test, en_indx)
 		vi_identified, max_vi, vi_len = token2id(vi_test, vi_indx)
 	if trn_tst == "train_eval":
-		en_identified, max_en, en_len = token2id(en_valid, en_indx)
-		vi_identified, max_vi, vi_len = token2id(vi_valid, vi_indx)
+		en_identified, max_en, en_len = token2id(en_test, en_indx)
+		vi_identified, max_vi, vi_len = token2id(vi_test, vi_indx)
 
 	# tokenized = id2token(identified, words)
 	assert len(en_identified) == len(vi_identified), "Translation data not the same length"
@@ -475,7 +475,7 @@ def train():
 
 	enc = Encoder(INPUT_DIM, ENC_EMB_DIM, HID_DIM, N_LAYERS, ENC_DROPOUT)
 	dec = Decoder(OUTPUT_DIM, DEC_EMB_DIM, HID_DIM, N_LAYERS, DEC_DROPOUT)
-	model = Seq2Seq(enc, dec, 0, DEVICE).to(DEVICE)
+	model = Seq2Seq(enc, dec, DEVICE).to(DEVICE)
 	# print(f'The model has {count_parameters(model):,} trainable parameters')
 
 	enc_tens = torch.tensor(enc_data, dtype = torch.int64).to(DEVICE)

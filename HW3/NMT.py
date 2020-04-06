@@ -446,8 +446,8 @@ def dataLoader(trn_tst):
 		en_identified, max_en, en_len = token2id(en_test, en_indx)
 		vi_identified, max_vi, vi_len = token2id(vi_test, vi_indx)
 	if trn_tst == "train_eval":
-		en_identified, max_en, en_len = token2id(en_valid, en_indx)
-		vi_identified, max_vi, vi_len = token2id(vi_valid, vi_indx)
+		en_identified, max_en, en_len = token2id(en_test, en_indx)
+		vi_identified, max_vi, vi_len = token2id(vi_test, vi_indx)
 
 	# tokenized = id2token(identified, words)
 	assert len(en_identified) == len(vi_identified), "Translation data not the same length"
@@ -492,7 +492,7 @@ def train_step(model, data_iter, optimizer, criterion, clip):
 
 		epoch_loss += loss.item()
 
-		print("Batch: {}/{}, Loss:{}".format(i,len(data_iter), loss.item()))
+		# print("Batch: {}/{}, Loss:{}".format(i,len(data_iter), loss.item()))
 
 	return epoch_loss/len(data_iter)
 
@@ -597,6 +597,7 @@ def evaluate_step(model,iterator,criterion, viet_words):
 
 			word_output = [[] for k in src_len]
 			batch_output = output.tolist()
+			print(batch_output[0:5])
 			correct_output = trg.tolist()
 			for ii, (j, jj) in enumerate(zip(batch_output, correct_output)):
 				word_output[ii] = depad(line_id2token(j, viet_words))
