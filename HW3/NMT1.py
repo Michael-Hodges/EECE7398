@@ -74,7 +74,7 @@ class Encoder(nn.Module):
 
 		self.embedding = nn.Embedding(input_dim, emb_dim)
 
-		self.rnn = nn.LSTM(emb_dim, hid_dim, n_layers, batch_first=True, dropout = dropout)
+		self.rnn = nn.LSTM(emb_dim, hid_dim, n_layers, batch_first=True)
 
 		self.dropout = nn.Dropout(dropout)
 
@@ -114,7 +114,7 @@ class Decoder(nn.Module):
 
 		self.embedding = nn.Embedding(output_dim, emb_dim)
 
-		self.rnn = nn.LSTM(emb_dim, hid_dim, n_layers, batch_first=False, dropout = dropout)
+		self.rnn = nn.LSTM(emb_dim, hid_dim, n_layers, batch_first=False)
 
 		self.fc_out = nn.Linear(hid_dim, output_dim)
 
@@ -536,6 +536,7 @@ def evaluate_step(model,iterator,criterion, viet_words):
 			word_output = [[] for k in src_len]
 			batch_output = output.tolist()
 			correct_output = trg.tolist()
+			print(batch_output[0:5])
 			for ii, (j, jj) in enumerate(zip(batch_output, correct_output)):
 				word_output[ii] = depad(line_id2token(j, viet_words))
 				correct_output[ii] = depad(line_id2token(jj, viet_words))
@@ -543,7 +544,7 @@ def evaluate_step(model,iterator,criterion, viet_words):
 			# print(word_output)
 			# loss = criterion(output,trg)
 			# epoch_loss += loss.item()
-			average_bleu += corpus_bleu(correct_output, word_output, smoothing_function=smoothing.method1, auto_reweigh=False)
+			average_bleu += corpus_bleu(correct_output, word_output, weights = (1.0, 0.0, 0.0, 0.0), smoothing_function=smoothing.method1, auto_reweigh=False)
 
 			# print("Batch: {}/{}, Loss:{}".format(i,len(data_iter), loss.item()))
 	return average_bleu/len(iterator)*100

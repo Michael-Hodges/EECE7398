@@ -606,7 +606,7 @@ def evaluate_step(model,iterator,criterion, viet_words):
 			# print(word_output)
 			# loss = criterion(output,trg)
 			# epoch_loss += loss.item()
-			average_bleu += corpus_bleu(correct_output, word_output, smoothing_function=smoothing.method1, auto_reweigh=False)
+			average_bleu += corpus_bleu(correct_output, word_output, weights = (1.0, 0.0, 0.0, 0.0), smoothing_function=smoothing.method1, auto_reweigh=False)
 
 			# print("Batch: {}/{}, Loss:{}".format(i,len(data_iter), loss.item()))
 	return average_bleu/len(iterator)*100
