@@ -31,7 +31,7 @@ VI_TEST_PATH  = './E_V/tst2012.vi' #'./E_V/tst2013.vi'
 EN_VALID_PATH = './E_V/tst2013.en'
 VI_VALID_PATH = './E_V/tst2013.vi'
 
-BATCH_SIZE = 128
+BATCH_SIZE = 64
 
 BUCKETS = [(10,10), (14,14), (18,18), (24,24), (33,33), (70,90)]
 
@@ -70,10 +70,10 @@ class Encoder(nn.Module):
 	def forward(self, src, src_len):
 		# print("Enc_src: {}".format(src.shape))
 		#src = [batch size, src len]
-		
+
 		embedded = self.dropout(self.embedding(src))
 
-		# print("Enc_embedded: {}".format(embedded.shape))		
+		# print("Enc_embedded: {}".format(embedded.shape))
 		#embedded = [batch size, src len, emb dim]
 
 		embedded_packed = nn.utils.rnn.pack_padded_sequence(embedded, src_len, batch_first=True, enforce_sorted=False)
@@ -95,12 +95,12 @@ class Encoder(nn.Module):
 class Attention(nn.Module):
     def __init__(self, enc_hid_dim, dec_hid_dim):
         super().__init__()
-        
+
         self.attn = nn.Linear((enc_hid_dim * 2) + dec_hid_dim, dec_hid_dim)
         self.v = nn.Linear(dec_hid_dim, 1, bias = False)
-        
+
     def forward(self, hidden, encoder_outputs, mask):
-        
+
         #hidden = [batch size, dec hid dim]
         #encoder_outputs = [src len, batch size, enc hid dim * 2]
         encoder_outputs = encoder_outputs.permute(1, 0, 2)
@@ -108,17 +108,17 @@ class Attention(nn.Module):
         # print("hidden shape: {}".format(hidden.shape))
         batch_size = encoder_outputs.shape[1]
         src_len = encoder_outputs.shape[0]
- 		
+
         #repeat decoder hidden state src_len times
         hidden = hidden.unsqueeze(1).repeat(1, src_len, 1)
-  
+
         encoder_outputs = encoder_outputs.permute(1, 0, 2)
-        
+
         #hidden = [batch size, src len, dec hid dim]
         #encoder_outputs = [batch size, src len, enc hid dim * 2]
         # print("hidden: {}".format(hidden.shape))
         # print("encoder again: {}".format(encoder_outputs.shape))
-        energy = torch.tanh(self.attn(torch.cat((hidden, encoder_outputs), dim = 2))) 
+        energy = torch.tanh(self.attn(torch.cat((hidden, encoder_outputs), dim = 2)))
         # print("energy: {}".format(energy.shape))
         #energy = [batch size, src len, dec hid dim]
 
@@ -127,7 +127,7 @@ class Attention(nn.Module):
         #attention = [batch size, src len]
         # print(mask.shape)
         attention = attention.masked_fill(mask == 0, -1e10)
-        
+
         return F.softmax(attention, dim = 1)
 
 
@@ -155,7 +155,7 @@ class Decoder(nn.Module):
         #hidden = [batch size, dec hid dim]
         #encoder_outputs = [src len, batch size, enc hid dim * 2]
         #mask = [batch size, src len]
-		
+
 		input = input.unsqueeze(0)
 		# print("input unsqueeze: {}".format(input.shape))
 		#input = [1, batch size]
