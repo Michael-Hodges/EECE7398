@@ -45,7 +45,7 @@ N_LAYERS = 2
 ENC_DROPOUT = 0.5
 DEC_DROPOUT = 0.5
 CLIP = 1
-N_EPOCHS = 50
+N_EPOCHS = 10
 
 DEVICE = torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
 
@@ -92,7 +92,8 @@ class Encoder(nn.Module):
 
 		outputs, (hidden, cell) = self.rnn(embedded_packed)
 
-		outputs, _ = nn.utils.rnn.pad_packed_sequence(outputs, batch_first=True, padding_value=0, total_length=70)
+		outputs, lengths = nn.utils.rnn.pad_packed_sequence(outputs, batch_first=True, padding_value=0, total_length=70)
+		# print(lengths)
 		# print(outputs.shape)
 		# print(hidden.shape)
 		# print(cell.shape)
@@ -407,7 +408,7 @@ def train_step(model, data_iter, optimizer, criterion, clip):
 		trg = dec
 
 		optimizer.zero_grad()
-
+		# print(trg[0])
 		output = model(src,trg, src_len)
 		# print("shape from model: {}".format(output.shape))
 		# trg = [batch size, trg len]
@@ -492,7 +493,7 @@ def train():
 
 	model.apply(init_weights)
 	optimizer = optim.Adam(model.parameters(), 0.001)
-	criterion = nn.CrossEntropyLoss(ignore_index=0)
+	criterion = nn.CrossEntropyLoss(ignore_index=3)
 
 	best_valid_loss = float('inf')
 	best_valid_BLEU = float(0)
@@ -507,13 +508,12 @@ def train():
 		# for i, (enc,dec, src_len, trg_len) in enumerate(data_iter):
 		if bleu_score > best_valid_BLEU:
 			best_valid_BLEU = bleu_score
-			torch.save(model.state_dict(), './model/nmt_5.pt')
+			torch.save(model.state_dict(), './model/nmt_test.pt')
 		end_time = time.time()
 		epoch_min, epoch_seconds = epoch_time(start_time, end_time)
 		print("Epoch: {} | Train Loss: {}| Valid Loss: {} | BLEU: {}".format(epoch, train_loss, valid_loss, bleu_score))
 
 	print("Training Terminated. Saving model...")
-	# torch.save(model.state_dict(), './model/nmt_5.pt')
 
 
 def evaluate_step(model,iterator,criterion, viet_words):
@@ -540,8 +540,10 @@ def evaluate_step(model,iterator,criterion, viet_words):
 			for ii, (j, jj) in enumerate(zip(batch_output, correct_output)):
 				word_output[ii] = depad(line_id2token(j, viet_words))
 				correct_output[ii] = depad(line_id2token(jj, viet_words))
-			print("predicted: {}".format(word_output[0]))
-			print("correct: {}".format(correct_output[0]))
+			# print(correct_output)
+			# print(word_output)
+			# loss = criterion(output,trg)
+			# epoch_loss += loss.item()
 			average_bleu += corpus_bleu(correct_output, word_output, weights = (1.0, 0.0, 0.0, 0.0), smoothing_function=smoothing.method1, auto_reweigh=False)
 
 			# print("Batch: {}/{}, Loss:{}".format(i,len(data_iter), loss.item()))
@@ -557,7 +559,7 @@ def test():
 	dec = Decoder(OUTPUT_DIM, DEC_EMB_DIM, HID_DIM, N_LAYERS, DEC_DROPOUT)
 	model = Seq2Seq(enc, dec, DEVICE).to(DEVICE)
 
-	# model.load_state_dict(torch.load('./model/nmt_5.pt'))
+	model.load_state_dict(torch.load('./model/nmt_test.pt'))
 
 	enc_tens = torch.tensor(enc_data, dtype = torch.int64).to(DEVICE)
 	dec_tens = torch.tensor(dec_data, dtype = torch.int64).to(DEVICE)
@@ -565,7 +567,7 @@ def test():
 
 	test_loader = torch.utils.data.DataLoader(test_dataset, batch_size = BATCH_SIZE, shuffle=False, drop_last = True)
 	data_iter = iter(test_loader)
-	criterion = nn.CrossEntropyLoss(ignore_index = 0)
+	criterion = nn.CrossEntropyLoss(ignore_index = 3)
 
 	bleu_score = evaluate_step(model, data_iter, criterion, vi_words)
 
@@ -621,7 +623,7 @@ def translate():
 	dec = Decoder(OUTPUT_DIM, DEC_EMB_DIM, HID_DIM, N_LAYERS, DEC_DROPOUT)
 	model = Seq2Seq(enc, dec, DEVICE).to(DEVICE)
 
-	model.load_state_dict(torch.load('./model/nmt_5.pt'))
+	model.load_state_dict(torch.load('./model/nmt_test.pt'))
 	print("In Translation Mode. Press ctl+c to exit...")
 	while(1):
 		to_translate = input(">")

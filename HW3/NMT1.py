@@ -41,11 +41,11 @@ VI_MAX_LEN = 90
 ENC_EMB_DIM = 256
 DEC_EMB_DIM = 256
 HID_DIM = 512
-N_LAYERS = 2
+N_LAYERS = 3
 ENC_DROPOUT = 0.5
 DEC_DROPOUT = 0.5
 CLIP = 1
-N_EPOCHS = 10
+N_EPOCHS = 20
 
 DEVICE = torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
 
